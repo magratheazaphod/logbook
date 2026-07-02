@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logbook</title>
+<style>
+  :root{
+    --paper:#F1E6E4;
+    --card:#FBFAF9;
+    --ink:#1B1D1E;
+    --muted:#6B6664;
+    --faint:#A69C9A;
+    --line:#E3D2CE;
+    --line-strong:#D2BDB8;
+    --accent:#B23A2E;      /* brick red — the one signal colour */
+    --accent-ink:#7C2620;
+    --accent-soft:#F5DEDA;
+    --done:#8A8D8A;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
+
+  /* Header ---------------------------------------------------------------- */
+  header.top{
+    display:flex;align-items:baseline;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;
+    padding-bottom:18px;margin-bottom:26px;
+    border-bottom:1px solid var(--line-strong);
+  }
+  .brand{display:flex;align-items:baseline;gap:12px}
+  .brand h1{
+    font-size:21px;font-weight:650;letter-spacing:-.02em;margin:0;
+  }
+  .brand .mark{
+    width:11px;height:11px;border-radius:50%;
+    background:var(--accent);align-self:center;
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .brand .tag{color:var(--muted);font-size:13px;font-family:var(--mono)}
+  .today{font-family:var(--mono);font-size:12.5px;color:var(--muted);
+    letter-spacing:.02em}
+
+  /* Layout ---------------------------------------------------------------- */
+  .grid{display:flex;align-items:flex-start}
+  .board-col{flex:0 0 var(--board-width, 420px);min-width:0;padding-right:26px}
+  .log-col{flex:1 1 auto;min-width:0;padding-left:26px}
+  .resizer{
+    flex:none;align-self:stretch;width:17px;margin:0 -8px;cursor:col-resize;
+    position:relative;z-index:2;
+  }
+  .resizer::after{
+    content:"";position:absolute;left:50%;top:6px;bottom:6px;width:2px;
+    transform:translateX(-50%);background:var(--line-strong);transition:background .12s,width .12s;
+  }
+  .resizer:hover::after,.resizer.dragging::after{background:var(--accent);width:3px}
+  body.resizing{cursor:col-resize;user-select:none}
+  @media (max-width:880px){
+    .grid{flex-direction:column;gap:44px}
+    .board-col{flex-basis:auto!important;width:100%;padding-right:0}
+    .log-col{padding-left:0}
+    .resizer{display:none}
+  }
+
+  .col-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .col-head h2{
+    font-size:12px;font-weight:650;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--muted);margin:0;
+  }
+  .col-head .count{font-family:var(--mono);font-size:12px;color:var(--faint)}
+
+  section.block{margin-bottom:34px}
+
+  /* Add row --------------------------------------------------------------- */
+  .add{display:flex;gap:8px;margin-bottom:14px}
+  .add input{
+    flex:1;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:9px 12px;font:inherit;color:var(--ink);
+    box-shadow:var(--shadow);
+  }
+  .add input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .add button{
+    border:1px solid var(--line-strong);background:var(--card);color:var(--ink);
+    border-radius:var(--radius);padding:0 14px;font:inherit;font-weight:550;
+    cursor:pointer;box-shadow:var(--shadow);
+  }
+  .add button:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+  /* Task / idea rows ------------------------------------------------------ */
+  ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  li.row{
+    display:flex;align-items:flex-start;gap:11px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:11px 12px;box-shadow:var(--shadow);
+  }
+  li.row.dragging{opacity:.4}
+  li.row.drag-over{border-top:2px solid var(--accent)}
+  .grip{
+    flex:none;margin-top:1px;cursor:grab;color:var(--faint);
+    font-size:13px;line-height:1;padding:2px 1px;user-select:none;touch-action:none;
+  }
+  .grip:active{cursor:grabbing}
+  li.row .chip{
+    flex:none;margin-top:1px;cursor:pointer;background:none;border:0;padding:0;
+    display:flex;align-items:center;gap:7px;font:inherit;
+  }
+  .dot{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--line-strong);flex:none}
+  .status-backlog .dot{border-color:var(--faint)}
+  .status-doing   .dot{background:var(--accent);border-color:var(--accent)}
+  .status-done    .dot{background:var(--done);border-color:var(--done)}
+  .chip .lbl{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);width:52px;text-align:left;
+  }
+  .status-doing .lbl{color:var(--accent)}
+  .body{flex:1;min-width:0}
+  .title{cursor:text;word-break:break-word}
+  .issue-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+  .issue-link{
+    font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent-ink);border:1px solid #e6c6c1;
+    text-decoration:none;
+  }
+  .issue-link:hover{text-decoration:underline}
+  .issue-unlink{
+    border:0;background:none;color:var(--faint);cursor:pointer;font-size:12px;
+    line-height:1;padding:2px 3px;border-radius:5px;
+  }
+  .issue-unlink:hover{color:var(--accent);background:var(--accent-soft)}
+  .status-done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
+  .row .del{
+    flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
+    font-size:15px;line-height:1;padding:2px 4px;border-radius:6px;opacity:0;transition:opacity .12s
+  }
+  li.row:hover .del,li.row:focus-within .del{opacity:1}
+  .row .del:hover{color:var(--accent);background:var(--accent-soft)}
+  .title[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+  .empty{color:var(--faint);font-size:13.5px;padding:14px 2px;font-style:italic}
+
+  /* today's focus — drag tasks/ideas here to work them today ------------- */
+  .today-focus{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 0 20px}
+  @media (max-width:640px){.today-focus{grid-template-columns:1fr}}
+  .tf-col{min-width:0}
+  .tf-head{
+    font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px;
+  }
+  .tf-list{gap:7px}
+  .tf-empty{
+    border:1px dashed var(--line-strong);border-radius:var(--radius);
+    padding:14px 12px;font-size:12.5px;text-align:center;background:transparent;
+  }
+
+  /* Daily log ------------------------------------------------------------- */
+  .logbar{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .logbar button.nav{
+    width:32px;height:32px;border-radius:8px;border:1px solid var(--line-strong);
+    background:var(--card);cursor:pointer;font-size:15px;color:var(--ink);
+    display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)
+  }
+  .logbar button.nav:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .logbar input[type=date]{
+    font:inherit;font-family:var(--mono);font-size:13px;background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:6px 9px;color:var(--ink);box-shadow:var(--shadow)
+  }
+  .logbar input[type=date]:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .logbar .today-btn{
+    margin-left:auto;border:1px solid var(--line-strong);background:var(--card);
+    border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink);box-shadow:var(--shadow)
+  }
+  .logbar .today-btn:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+  .daystamp{margin:16px 0 4px;font-size:17px;font-weight:650;letter-spacing:-.01em}
+  .daystamp .wd{color:var(--accent);font-family:var(--mono);font-size:12px;
+    font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-right:9px;vertical-align:2px}
+  .summline{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:18px}
+  .summline b{color:var(--ink);font-weight:600}
+
+  .day-summary{
+    font-size:14.5px;color:var(--ink);line-height:1.5;margin:0 0 10px;
+    outline:none;border-radius:6px;padding:3px 5px;margin-left:-5px;cursor:text;
+  }
+  .day-summary:hover{background:var(--card)}
+  .day-summary:focus{outline:2px solid var(--accent);outline-offset:1px;background:var(--card)}
+  .day-summary:empty::before{content:attr(data-placeholder);color:var(--faint);font-style:italic}
+
+  .note{
+    background:var(--accent-soft);border:1px solid #e6c6c1;border-left:3px solid var(--accent);
+    border-radius:8px;padding:12px 15px;margin:0 0 22px;font-size:14px;color:var(--accent-ink)
+  }
+  .note h3{margin:.2em 0 .3em;font-size:14px}
+  .note p{margin:.4em 0}
+  .note ul{margin:.4em 0;padding-left:1.2em}
+
+  /* the ledger rail */
+  .ledger{position:relative;margin-left:6px;padding-left:26px}
+  .ledger::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line-strong)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
+    background:var(--paper);border:1px solid var(--line);color:var(--muted)}
+  .pill.proj{color:var(--accent-ink);background:var(--accent-soft);border-color:#e6c6c1}
+  .pill.branch::before{content:"⎇ ";opacity:.7}
+  .pill.turns{color:var(--muted)}
+  .pill.tokens{color:var(--accent-ink)}
+
+  /* agent groups ------------------------------------------------------- */
+  .agent{position:relative;margin-bottom:14px;animation:rise .35s ease both}
+  @media (prefers-reduced-motion:reduce){.agent{animation:none}}
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .agent::before{content:"";position:absolute;left:-26px;top:15px;width:10px;height:10px;
+    border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--paper)}
+  .agent > summary{
+    list-style:none;cursor:pointer;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .agent > summary::-webkit-details-marker{display:none}
+  .agent > summary::before{
+    content:"▸";display:inline-block;color:var(--faint);font-size:11px;
+    transition:transform .15s;flex:none;
+  }
+  .agent[open] > summary::before{transform:rotate(90deg)}
+  .agent > summary .agent-name{font-weight:600;font-size:14.5px}
+  .agent > summary .agent-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:auto}
+  .agent-sessions{
+    display:flex;flex-direction:column;gap:6px;margin:8px 0 0 2px;
+    padding-left:12px;border-left:2px solid var(--line);
+  }
+  .sess-line{
+    display:flex;align-items:baseline;gap:10px;background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:8px 11px;box-shadow:var(--shadow);
+  }
+  .sess-line .clock{font-family:var(--mono);font-size:11px;color:var(--muted);flex:none}
+  .sess-line .sess-title{
+    flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px;
+  }
+  .sess-line .pill{flex:none}
+
+  .log-empty{border:1px dashed var(--line-strong);border-radius:var(--radius);
+    padding:26px 20px;text-align:center;color:var(--muted);background:var(--card)}
+  .log-empty code{font-family:var(--mono);font-size:12px;background:var(--paper);
+    padding:1px 6px;border-radius:5px;border:1px solid var(--line)}
+
+  .warn{font-family:var(--mono);font-size:12px;color:#8a4b1f;background:#f7ead9;
+    border:1px solid #e8d3b3;border-radius:8px;padding:10px 12px;margin-bottom:16px}
+  .savenote{position:fixed;bottom:16px;right:18px;font-family:var(--mono);font-size:11px;
+    color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:7px;
+    padding:5px 10px;box-shadow:var(--shadow);opacity:0;transition:opacity .25s}
+  .savenote.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <h1>Logbook</h1>
+      <span class="tag">backlog · ideas · daily log</span>
+    </div>
+    <div class="today" id="todayStamp"></div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: board ----------------------------------------------------- -->
+    <div class="board-col">
+      <section class="block">
+        <div class="col-head">
+          <h2>Backlog</h2>
+          <span class="count" id="taskCount"></span>
+        </div>
+        <div class="add">
+          <input id="taskInput" type="text" placeholder="Add a task…" aria-label="Add a task">
+          <button id="taskAdd">Add</button>
+        </div>
+        <ul class="list" id="taskList"></ul>
+      </section>
+
+      <section class="block">
+        <div class="col-head">
+          <h2>Ideas</h2>
+          <span class="count" id="ideaCount"></span>
+        </div>
+        <div class="add">
+          <input id="ideaInput" type="text" placeholder="Add a higher-level idea…" aria-label="Add an idea">
+          <button id="ideaAdd">Add</button>
+        </div>
+        <ul class="list" id="ideaList"></ul>
+      </section>
+    </div>
+
+    <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize columns"></div>
+
+    <!-- RIGHT: daily log ------------------------------------------------ -->
+    <div class="log-col">
+      <div class="col-head">
+        <h2>Daily Log</h2>
+        <span class="count" id="logCount"></span>
+      </div>
+      <div class="logbar">
+        <button class="nav" id="prevDay" title="Previous day" aria-label="Previous day">‹</button>
+        <input type="date" id="datePick" aria-label="Log date">
+        <button class="nav" id="nextDay" title="Next day" aria-label="Next day">›</button>
+        <button class="today-btn" id="todayBtn">Today</button>
+      </div>
+      <div id="logOut"></div>
+    </div>
+  </div>
+</div>
+<div class="savenote" id="savenote">saved</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const el = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+let board = { tasks: [], ideas: [] };
+const STATUSES = ["backlog", "doing", "done"];
+const STATUS_LABEL = { backlog: "todo", doing: "doing", done: "done" };
+
+// ---- persistence -------------------------------------------------------
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await fetch("/api/board", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(board)
+      });
+      const n = $("#savenote"); n.classList.add("show");
+      setTimeout(() => n.classList.remove("show"), 900);
+    } catch (e) { /* offline / file:// — non-fatal */ }
+  }, 350);
+}
+
+// ---- drag registry -------------------------------------------------------
+// Every draggable list (backlog, ideas, today's focus lists) registers its
+// backing array + a re-render callback here, keyed by an arbitrary list id.
+// Drag/drop handlers look sources and targets up by id at drop-time, which
+// is what lets a row be dragged from one list into a completely different one.
+const DND = {};
+function registerList(listId, arr, onChange, kind) {
+  DND[listId] = { arr, onChange, kind };
+}
+
+function makeDraggable(li, id, listId) {
+  const grip = el("span", "grip"); grip.textContent = "⠿"; grip.title = "Drag to reorder";
+  grip.draggable = true;
+  grip.addEventListener("dragstart", e => {
+    li.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", JSON.stringify({ id, listId }));
+  });
+  grip.addEventListener("dragend", () => li.classList.remove("dragging"));
+  li.addEventListener("dragover", e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    li.classList.add("drag-over");
+  });
+  li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+  li.addEventListener("drop", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    li.classList.remove("drag-over");
+    handleDrop(e, listId, id);
+  });
+  return grip;
+}
+
+// Makes a container (a <ul class="list">) accept drops on empty space —
+// i.e. dropping below/around existing rows, or into a completely empty list.
+function registerContainerDrop(container, listId) {
+  container.addEventListener("dragover", e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+  container.addEventListener("drop", e => {
+    e.preventDefault();
+    handleDrop(e, listId, null);
+  });
+}
+
+function handleDrop(e, targetListId, targetId) {
+  let payload;
+  try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+  const fromId = payload && payload.id, fromListId = payload && payload.listId;
+  const from = DND[fromListId], to = DND[targetListId];
+  if (!fromId || !from || !to || from.kind !== to.kind) return;
+  const fromIdx = from.arr.findIndex(x => x.id === fromId);
+  if (fromIdx === -1) return;
+  if (fromListId === targetListId && fromId === targetId) return;
+  const [moved] = from.arr.splice(fromIdx, 1);
+  let toIdx = targetId ? to.arr.findIndex(x => x.id === targetId) : to.arr.length;
+  if (toIdx === -1) toIdx = to.arr.length;
+  to.arr.splice(toIdx, 0, moved);
+  from.onChange();
+  if (to.onChange !== from.onChange) to.onChange();
+  save();
+}
+
+// ---- board rendering ---------------------------------------------------
+function renderTasks() {
+  registerList("backlog", board.tasks, renderTasks, "task");
+  const list = $("#taskList"); list.innerHTML = "";
+  $("#taskCount").textContent = board.tasks.length
+    ? `${board.tasks.filter(t => t.status !== "done").length} open`
+    : "";
+  if (!board.tasks.length) {
+    const e = el("div", "empty"); e.textContent = "Nothing queued. Add your first task above.";
+    list.appendChild(e); return;
+  }
+  for (const t of board.tasks) list.appendChild(taskRow(t, "backlog"));
+}
+
+// Small pill shown under a task/idea's title when a matching GitHub issue
+// was found — removable, since the auto-match can guess wrong.
+function linkedIssueRow(item, onChange) {
+  if (!item.linkedIssue) return null;
+  const row = el("div", "issue-row");
+  const link = el("a", "issue-link");
+  link.href = item.linkedIssue.url; link.target = "_blank"; link.rel = "noopener";
+  link.textContent = `${item.linkedIssue.repo}#${item.linkedIssue.number}`;
+  const unlink = el("button", "issue-unlink"); unlink.textContent = "✕";
+  unlink.title = "Remove linked issue"; unlink.setAttribute("aria-label", "Remove linked issue");
+  unlink.onclick = e => { e.stopPropagation(); delete item.linkedIssue; onChange(); save(); };
+  row.append(link, unlink);
+  return row;
+}
+
+async function checkForMatchingIssue(item, arr, onChange) {
+  try {
+    const r = await fetch("/api/match-issue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: item.title }),
+    });
+    const data = await r.json();
+    if (data && data.match) {
+      const cur = arr.find(x => x.id === item.id);
+      if (cur) { cur.linkedIssue = data.match; onChange(); save(); }
+    }
+  } catch (e) { /* best-effort, no gh/claude available or network error */ }
+}
+
+function taskRow(t, listId) {
+  const { arr, onChange } = DND[listId];
+  const li = el("li", "row status-" + (t.status || "backlog"));
+  li.dataset.id = t.id;
+
+  const grip = makeDraggable(li, t.id, listId);
+
+  const chip = el("button", "chip");
+  chip.title = "Click to change status";
+  chip.setAttribute("aria-label", "status: " + (STATUS_LABEL[t.status] || "todo"));
+  const dot = el("span", "dot");
+  const lbl = el("span", "lbl"); lbl.textContent = STATUS_LABEL[t.status] || "todo";
+  chip.append(dot, lbl);
+  chip.onclick = () => {
+    const i = STATUSES.indexOf(t.status);
+    t.status = STATUSES[(i + 1) % STATUSES.length];
+    t.updated = new Date().toISOString();
+    onChange(); save();
+  };
+
+  const body = el("div", "body");
+  const title = el("div", "title");
+  title.contentEditable = "true"; title.spellcheck = false; title.textContent = t.title;
+  title.addEventListener("blur", () => {
+    const v = title.textContent.trim();
+    if (!v) { title.textContent = t.title; return; }
+    t.title = v; t.updated = new Date().toISOString(); save();
+  });
+  title.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); title.blur(); }
+  });
+  body.appendChild(title);
+  const issueRow = linkedIssueRow(t, onChange);
+  if (issueRow) body.appendChild(issueRow);
+
+  const del = el("button", "del"); del.textContent = "✕"; del.title = "Delete";
+  del.setAttribute("aria-label", "Delete task");
+  del.onclick = () => {
+    const i = arr.findIndex(x => x.id === t.id);
+    if (i > -1) arr.splice(i, 1);
+    onChange(); save();
+  };
+
+  li.append(grip, chip, body, del);
+  return li;
+}
+
+function renderIdeas() {
+  registerList("ideas", board.ideas, renderIdeas, "idea");
+  const list = $("#ideaList"); list.innerHTML = "";
+  $("#ideaCount").textContent = board.ideas.length ? `${board.ideas.length}` : "";
+  if (!board.ideas.length) {
+    const e = el("div", "empty"); e.textContent = "Somewhere to park the bigger bets.";
+    list.appendChild(e); return;
+  }
+  for (const idea of board.ideas) list.appendChild(ideaRow(idea, "ideas"));
+}
+
+function ideaRow(idea, listId, opts) {
+  const interactive = !!(opts && opts.doneToggle);
+  const { arr, onChange } = DND[listId];
+  const li = el("li", "row status-" + (interactive && idea.done ? "done" : "backlog"));
+  li.dataset.id = idea.id;
+  const grip = makeDraggable(li, idea.id, listId);
+  const dot = el("span", "dot");
+  dot.style.borderColor = "var(--accent)";
+  dot.style.background = interactive && idea.done ? "var(--accent)" : "transparent";
+  let chip;
+  if (interactive) {
+    chip = el("button", "chip");
+    chip.title = "Click to mark done";
+    chip.setAttribute("aria-label", idea.done ? "done" : "not done");
+    chip.onclick = () => { idea.done = !idea.done; onChange(); save(); };
+  } else {
+    chip = el("span", "chip");
+  }
+  chip.appendChild(dot);
+  const body = el("div", "body");
+  const title = el("div", "title");
+  title.contentEditable = "true"; title.spellcheck = false; title.textContent = idea.title;
+  title.addEventListener("blur", () => {
+    const v = title.textContent.trim();
+    if (!v) { title.textContent = idea.title; return; }
+    idea.title = v; save();
+  });
+  title.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); title.blur(); } });
+  body.appendChild(title);
+  const issueRow = linkedIssueRow(idea, onChange);
+  if (issueRow) body.appendChild(issueRow);
+  const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
+  del.onclick = () => {
+    const i = arr.findIndex(x => x.id === idea.id);
+    if (i > -1) arr.splice(i, 1);
+    onChange(); save();
+  };
+  li.append(grip, chip, body, del);
+  return li;
+}
+
+function addTask() {
+  const inp = $("#taskInput"); const v = inp.value.trim(); if (!v) return;
+  const t = { id: crypto.randomUUID(), title: v, status: "backlog",
+    created: new Date().toISOString(), updated: new Date().toISOString() };
+  board.tasks.push(t);
+  inp.value = ""; renderTasks(); save();
+  checkForMatchingIssue(t, board.tasks, renderTasks);
+}
+function addIdea() {
+  const inp = $("#ideaInput"); const v = inp.value.trim(); if (!v) return;
+  const idea = { id: crypto.randomUUID(), title: v, created: new Date().toISOString() };
+  board.ideas.push(idea);
+  inp.value = ""; renderIdeas(); save();
+  checkForMatchingIssue(idea, board.ideas, renderIdeas);
+}
+
+// ---- today's focus (drag tasks/ideas from the backlog into a given day) --
+function todayKey() { return iso(new Date()); }
+
+function renderTodayFocus(container, dateKey) {
+  container.innerHTML = "";
+  const isToday = dateKey === todayKey();
+  board.dayPlans ||= {};
+  const plan = board.dayPlans[dateKey];
+
+  if (!isToday && (!plan || (!plan.tasks?.length && !plan.ideas?.length))) {
+    return; // nothing to show for a past/future day with no history
+  }
+
+  const wrap = el("div", "today-focus");
+  wrap.appendChild(focusColumn("Tasks", "task", dateKey, isToday, plan));
+  wrap.appendChild(focusColumn("Ideas", "idea", dateKey, isToday, plan));
+  container.appendChild(wrap);
+}
+
+function focusColumn(label, kind, dateKey, isToday, plan) {
+  const col = el("div", "tf-col");
+  const head = el("div", "tf-head");
+  head.textContent = (isToday ? "Today's " : "That day's ") + label;
+  col.appendChild(head);
+
+  const list = el("ul", "list tf-list");
+  col.appendChild(list);
+
+  const key = kind === "task" ? "tasks" : "ideas";
+
+  if (isToday) {
+    board.dayPlans[dateKey] ||= { tasks: [], ideas: [] };
+    const arr = board.dayPlans[dateKey][key];
+    const listId = "today-" + key;
+    registerList(listId, arr, () => renderTodayFocus($("#todayFocus"), dateKey), kind);
+    registerContainerDrop(list, listId);
+    if (!arr.length) {
+      const e = el("div", "empty tf-empty");
+      e.textContent = `Drag ${label.toLowerCase()} here from the ${label} list to focus on them today.`;
+      list.appendChild(e);
+    } else {
+      for (const item of arr) {
+        list.appendChild(kind === "task" ? taskRow(item, listId) : ideaRow(item, listId, { doneToggle: true }));
+      }
+    }
+  } else {
+    const arr = (plan && plan[key]) || [];
+    if (!arr.length) {
+      const e = el("div", "empty tf-empty"); e.textContent = "Nothing here.";
+      list.appendChild(e);
+    } else {
+      for (const item of arr) list.appendChild(readOnlyRow(item, kind));
+    }
+  }
+  return col;
+}
+
+function readOnlyRow(item, kind) {
+  const li = el("li", "row status-done");
+  const dot = el("span", "dot");
+  const chip = el("span", "chip"); chip.appendChild(dot);
+  const body = el("div", "body");
+  const title = el("div", "title"); title.textContent = item.title;
+  body.appendChild(title);
+  li.append(chip, body);
+  return li;
+}
+
+// ---- daily log ---------------------------------------------------------
+let logDate = new Date();
+const iso = d => d.toISOString().slice(0, 10);
+
+function fmtTokens(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e3) return Math.round(n / 1e3) + "K";
+  return String(n);
+}
+function oneLine(s) {
+  return String(s).replace(/\s+/g, " ").trim();
+}
+
+function tinyMarkdown(src) {
+  const lines = esc(src).split("\n");
+  let out = "", inList = false;
+  const close = () => { if (inList) { out += "</ul>"; inList = false; } };
+  for (let raw of lines) {
+    const line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inList) { out += "<ul>"; inList = true; }
+      out += "<li>" + line.replace(/^\s*[-*]\s+/, "") + "</li>";
+    } else if (/^###?\s+/.test(line)) {
+      close(); out += "<h3>" + line.replace(/^###?\s+/, "") + "</h3>";
+    } else if (line.trim() === "") {
+      close();
+    } else {
+      close(); out += "<p>" + line + "</p>";
+    }
+  }
+  close(); return out;
+}
+
+async function loadLog() {
+  $("#datePick").value = iso(logDate);
+  const out = $("#logOut"); out.innerHTML = "";
+  let data;
+  try {
+    const r = await fetch("/api/log?date=" + iso(logDate));
+    data = await r.json();
+  } catch (e) {
+    out.innerHTML = '<div class="log-empty">Run this through <code>python3 server.py</code> to read your Claude Code sessions.</div>';
+    return;
+  }
+
+  const d = new Date(logDate);
+  const stamp = el("div", "daystamp");
+  const wd = el("span", "wd"); wd.textContent = d.toLocaleDateString(undefined, { weekday: "short" });
+  stamp.appendChild(wd);
+  stamp.appendChild(document.createTextNode(
+    d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })));
+  out.appendChild(stamp);
+
+  const summaryDate = iso(logDate);
+  const summaryEl = el("div", "day-summary");
+  summaryEl.contentEditable = "true";
+  summaryEl.spellcheck = false;
+  summaryEl.dataset.placeholder = "Click to add a one-sentence summary of the day…";
+  summaryEl.textContent = data.day_summary || "";
+  summaryEl.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); summaryEl.blur(); }
+  });
+  summaryEl.addEventListener("blur", () => {
+    const v = summaryEl.textContent.trim();
+    fetch("/api/day-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: summaryDate, text: v }),
+    }).catch(() => {});
+  });
+  out.appendChild(summaryEl);
+
+  const focusContainer = el("div", "");
+  focusContainer.id = "todayFocus";
+  out.appendChild(focusContainer);
+  renderTodayFocus(focusContainer, summaryDate);
+
+  if (!data.projects_dir_exists) {
+    const w = el("div", "warn");
+    w.textContent = "No Claude Code sessions folder found at " + data.projects_dir +
+      " — set CLAUDE_PROJECTS_DIR if yours is elsewhere.";
+    out.appendChild(w);
+  }
+
+  const t = data.totals || { sessions: 0, projects: [], user_turns: 0, assistant_turns: 0, tokens: 0 };
+  $("#logCount").textContent = t.sessions ? `${t.sessions} session${t.sessions>1?"s":""}` : "";
+  const sum = el("div", "summline");
+  if (t.sessions) {
+    sum.innerHTML = `<b>${t.sessions}</b> session${t.sessions>1?"s":""} · ` +
+      `<b>${t.projects.length}</b> project${t.projects.length!==1?"s":""} · ` +
+      `<b>${t.user_turns}</b> prompts · <b>${t.assistant_turns}</b> replies · ` +
+      `<b>${fmtTokens(t.tokens)}</b> tokens`;
+    out.appendChild(sum);
+  }
+
+  if (data.note && data.note.trim()) {
+    const n = el("div", "note"); n.innerHTML = tinyMarkdown(data.note.trim());
+    out.appendChild(n);
+  }
+
+  if (!data.entries || !data.entries.length) {
+    const e = el("div", "log-empty");
+    e.innerHTML = data.projects_dir_exists
+      ? "No Claude Code activity logged on this day.<br><span style='font-size:12px'>Drop a note at <code>data/logs/" + iso(logDate) + ".md</code> to add a narrative for any day.</span>"
+      : "Point me at your sessions and this day will fill in automatically.";
+    out.appendChild(e);
+    return;
+  }
+
+  // group sessions by agent (canonical project), preserving first-seen order
+  const groups = new Map();
+  for (const en of data.entries) {
+    const key = en.project_short;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(en);
+  }
+
+  const ledger = el("div", "ledger");
+  for (const [project, sessions] of groups) {
+    const details = el("details", "agent");
+    details.open = true;
+    const summary = el("summary");
+    const name = el("span", "agent-name"); name.textContent = project;
+    const sessTokens = sessions.reduce((n, e) => n + (e.tokens || 0), 0);
+    const meta = el("span", "agent-meta");
+    meta.textContent = `${sessions.length} session${sessions.length!==1?"s":""} · ${fmtTokens(sessTokens)} tokens`;
+    summary.append(name, meta);
+    details.appendChild(summary);
+
+    const body = el("div", "agent-sessions");
+    for (const en of sessions) {
+      const line = el("div", "sess-line");
+      const clk = el("span", "clock"); clk.textContent = `${en.start}–${en.end}`;
+      const title = el("span", "sess-title"); title.textContent = oneLine(en.summary || en.title); title.title = en.title;
+      const turns = el("span", "pill turns"); turns.textContent = `${en.user_turns} prompt${en.user_turns!==1?"s":""}`;
+      const tok = el("span", "pill tokens"); tok.textContent = fmtTokens(en.tokens || 0);
+      line.append(clk, title, turns, tok);
+      body.appendChild(line);
+    }
+    details.appendChild(body);
+    ledger.appendChild(details);
+  }
+  out.appendChild(ledger);
+}
+
+function shiftDay(n) { logDate.setDate(logDate.getDate() + n); loadLog(); }
+
+// ---- column resizer ------------------------------------------------------
+function initResizer() {
+  const grid = $(".grid"), boardCol = $(".board-col"), handle = $("#resizer");
+  const MIN = 260, MAX = 800;
+  const saved = parseFloat(localStorage.getItem("logbook.boardWidth"));
+  if (saved) boardCol.style.setProperty("--board-width", saved + "px");
+
+  let startX = 0, startW = 0;
+  const onMove = e => {
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const w = Math.min(MAX, Math.max(MIN, startW + (x - startX)));
+    boardCol.style.setProperty("--board-width", w + "px");
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.classList.remove("resizing");
+    handle.classList.remove("dragging");
+    const w = parseFloat(getComputedStyle(boardCol).width);
+    localStorage.setItem("logbook.boardWidth", Math.round(w));
+  };
+  handle.addEventListener("mousedown", e => {
+    e.preventDefault();
+    startX = e.clientX;
+    startW = boardCol.getBoundingClientRect().width;
+    document.body.classList.add("resizing");
+    handle.classList.add("dragging");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+// ---- boot --------------------------------------------------------------
+async function boot() {
+  $("#todayStamp").textContent =
+    new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
+  try {
+    const r = await fetch("/api/board");
+    board = await r.json();
+    board.tasks ||= []; board.ideas ||= []; board.dayPlans ||= {};
+  } catch (e) { board = { tasks: [], ideas: [], dayPlans: {} }; }
+
+  renderTasks(); renderIdeas();
+  registerContainerDrop($("#taskList"), "backlog");
+  registerContainerDrop($("#ideaList"), "ideas");
+
+  $("#taskAdd").onclick = addTask;
+  $("#taskInput").addEventListener("keydown", e => { if (e.key === "Enter") addTask(); });
+  $("#ideaAdd").onclick = addIdea;
+  $("#ideaInput").addEventListener("keydown", e => { if (e.key === "Enter") addIdea(); });
+
+  $("#prevDay").onclick = () => shiftDay(-1);
+  $("#nextDay").onclick = () => shiftDay(1);
+  $("#todayBtn").onclick = () => { logDate = new Date(); loadLog(); };
+  $("#datePick").addEventListener("change", e => {
+    if (e.target.value) { logDate = new Date(e.target.value + "T12:00:00"); loadLog(); }
+  });
+
+  initResizer();
+  loadLog();
+}
+boot();
+</script>
+</body>
+</html>

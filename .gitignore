@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+.claude/settings.local.json
+
+# Personal runtime data — task lists, session summaries, cached logs.
+# Generated at runtime by server.py; never meant to be shared.
+data/board.json
+data/day_log_cache.json
+data/day_summaries.json
+data/session_summaries.json
+data/logs/*.md
