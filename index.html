@@ -700,11 +700,15 @@ async function loadLog() {
   summaryEl.spellcheck = false;
   summaryEl.dataset.placeholder = "Click to add a one-sentence summary of the day…";
   summaryEl.textContent = data.day_summary || "";
+  const loadedSummary = (data.day_summary || "").trim();
   summaryEl.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); summaryEl.blur(); }
   });
   summaryEl.addEventListener("blur", () => {
     const v = summaryEl.textContent.trim();
+    // Only persist a genuine edit — blurring without changing anything must
+    // not flip an auto-generated summary to "edited" and freeze it forever.
+    if (v === loadedSummary) return;
     fetch("/api/day-summary", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

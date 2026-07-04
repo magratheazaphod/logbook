@@ -61,6 +61,13 @@ the mechanical layout, run instructions, and file responsibilities.
   win/hard-fought resolution over a generic thematic average** — the user caught a first-draft
   summary that averaged everything into vague theme-speak and missed the one thing that
   actually mattered that day (getting a scheduled report emailed out after a real struggle).
+  A later fix: **a failed headless `claude -p` call must never be cached as if it were a
+  real summary.** Originally a transient LLM failure fell back to `_naive_summary()` (session
+  summaries joined with `; ` and hard-truncated with a `…`) and that garbage got frozen —
+  worse, the UI's day-summary field POSTed on *any* blur, flipping the fallback to
+  `edited:true` so it could never regenerate. Now `_generate_summary`/`_generate_day_summary`
+  return `None` on failure, callers show the naive text transiently but **don't persist it**
+  (so it self-heals on a later load), and the UI only saves a genuine edit.
 - **Backlog and Ideas are drag-and-drop rankable**, and **Today's Focus** lets the user drag
   tasks/ideas onto the current day to work from; anything not marked done rolls back to the top
   of Backlog/Ideas at end of day. Adding *new* items to a day's focus is only possible for
@@ -87,6 +94,10 @@ the mechanical layout, run instructions, and file responsibilities.
   the `woogles-io` org discovery via a question rather than silently widening the search.
 - **When the user signals "good enough," stop tuning.** Don't keep iterating on a
   heuristic/feature once they've said it's fine as-is, even if you can see room to improve it.
+- **A light day earns a short summary — never pad.** Day-summaries (and session
+  summaries) should match the actual weight of the day. If little of substance happened,
+  a few words is the correct output; don't stretch it with filler to make the day look
+  busier. This is encoded in the day-summary prompt, but holds as a general preference.
 - **Confirm before git pushes / public repo creation** — this was asked explicitly
   (`gh repo create --public`) rather than assumed.
 - Mobile viewability was discussed as a **"tell me what it'd take, don't implement"**
