@@ -41,6 +41,30 @@ PROJECTS_DIR = Path(
     os.environ.get("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects")
 ).expanduser()
 
+# Claude Desktop's Cowork mode runs each task in its own sandboxed local-agent
+# session, with its own nested .claude/projects dir — entirely separate from
+# PROJECTS_DIR above. Override with COWORK_SESSIONS_DIR if yours lives
+# elsewhere; harmless if the app was never installed (just won't exist).
+COWORK_SESSIONS_DIR = Path(
+    os.environ.get(
+        "COWORK_SESSIONS_DIR",
+        Path.home() / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions",
+    )
+).expanduser()
+
+# One-time cleanup: early tinkering/onboarding Cowork chats from before real
+# Cowork usage started, not worth logging as work. Keyed by cliSessionId (the
+# transcript filename's stem). New Cowork sessions are included by default —
+# this is a denylist for known-junk history, not an allowlist for the future.
+COWORK_SESSION_DENYLIST = {
+    "62a0126e-3a76-43c2-bffd-66cb47b3b868",  # scrabble-ai: "Claude code update"
+    "df12e620-62d3-47fd-8e88-7df7c273cf0a",  # auto-scrabble-analysis: "Scrabble games mistake analysis"
+    "909d193c-cafe-41a5-8b30-352c9101b08c",  # onboarding: "Customize Claude to your role"
+    "09a7c121-51a1-42c5-8515-922630135c17",  # onboarding: "Schedule a recurring task"
+    "ce43a2b3-e6e3-4cfb-a00a-e31f65aa3e52",  # onboarding: "Crontab edit warning"
+    "28d8a77f-400d-4c95-956c-a0416511f701",  # auto-scrabble-analysis: "Uploading tournament games to Woogles"
+}
+
 PORT = int(os.environ.get("PORT", "8787"))
 
 DEFAULT_BOARD = {"tasks": [], "ideas": [], "dayPlans": {}}
@@ -216,7 +240,7 @@ def event_tokens(usage):
     )
 
 
-def read_session_file(path):
+def read_session_file(path, project_override=None, title_override=None, source="cli"):
     """Return a compact record for one .jsonl session, or None if unreadable."""
     events = []          # list of (datetime, role)
     branches = set()
@@ -280,18 +304,19 @@ def read_session_file(path):
     if not events:
         return None
 
-    project = canonical_project(cwd or decode_project_name(path.parent.name))
+    project = project_override or canonical_project(cwd or decode_project_name(path.parent.name))
     return {
         "id": session_id,
         "project": project,
         "project_short": Path(project).name or project,
         "branches": sorted(branches),
         "events": events,
-        "title": summary or synopsis or "(untitled session)",
+        "title": title_override or summary or synopsis or "(untitled session)",
         "synopsis": synopsis or "",
         "last_assistant": last_assistant or "",
         "file": str(path),
         "mtime": path.stat().st_mtime,
+        "source": source,
     }
 
 
@@ -551,12 +576,8 @@ def summarize_sessions(sessions):
     return {s["id"]: session_summary(s) for s in sessions}
 
 
-def collect_sessions():
-    """Read all session files, reusing cached parses for any file whose
-    mtime hasn't changed since we last read it."""
-    if not PROJECTS_DIR.exists():
-        return []
-    files = sorted(PROJECTS_DIR.rglob("*.jsonl"))
+def _scan_and_cache(files, parse_fn):
+    """Shared file-mtime-cached parse loop. Returns (records, seen_keys)."""
     seen = set()
     sessions = []
     for p in files:
@@ -567,10 +588,68 @@ def collect_sessions():
         if cached and cached[0] == mtime_ns:
             rec = cached[1]
         else:
-            rec = read_session_file(p)
+            rec = parse_fn(p)
             _file_cache[key] = (mtime_ns, rec)
         if rec:
             sessions.append(rec)
+    return sessions, seen
+
+
+def _cowork_project_name(folders):
+    """Best label for a Cowork session: the space's first selected folder
+    name, or a generic fallback for sessions with none attached (chat-only
+    onboarding, scheduling, etc.)."""
+    if folders:
+        return Path(folders[0]).name or folders[0]
+    return "Cowork"
+
+
+def _cowork_transcripts():
+    """Map every discoverable Cowork transcript path to (project, title)
+    pulled from its local_<uuid>.json sidecar. Cowork runs each task in its
+    own sandboxed local-agent session with a nested .claude/projects dir,
+    entirely separate from PROJECTS_DIR."""
+    mapping = {}
+    for sidecar in COWORK_SESSIONS_DIR.rglob("local_*.json"):
+        if not sidecar.is_file():
+            continue
+        try:
+            meta = json.loads(sidecar.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        project = _cowork_project_name(meta.get("userSelectedFolders"))
+        proj_dir = sidecar.parent / sidecar.stem / ".claude" / "projects"
+        if not proj_dir.exists():
+            continue
+        for jsonl in proj_dir.rglob("*.jsonl"):
+            if "subagents" in jsonl.parts:
+                continue  # sidechain transcript, not a top-level task
+            if jsonl.stem in COWORK_SESSION_DENYLIST:
+                continue
+            mapping[jsonl] = (project, meta.get("title"))
+    return mapping
+
+
+def collect_sessions():
+    """Read all session files (Claude Code CLI + Claude Desktop Cowork),
+    reusing cached parses for any file whose mtime hasn't changed."""
+    sessions = []
+    seen = set()
+    if PROJECTS_DIR.exists():
+        files = [p for p in PROJECTS_DIR.rglob("*.jsonl") if "subagents" not in p.parts]
+        s, sk = _scan_and_cache(sorted(files), read_session_file)
+        sessions += s
+        seen |= sk
+    if COWORK_SESSIONS_DIR.exists():
+        mapping = _cowork_transcripts()
+
+        def _parse_cowork(p):
+            project, title = mapping.get(p, (None, None))
+            return read_session_file(p, project_override=project, title_override=title, source="cowork")
+
+        s, sk = _scan_and_cache(sorted(mapping.keys()), _parse_cowork)
+        sessions += s
+        seen |= sk
     for stale in set(_file_cache) - seen:
         del _file_cache[stale]
     return sessions
@@ -780,6 +859,7 @@ def _compute_day(target):
             "project": s["project"],
             "project_short": s["project_short"],
             "branches": s["branches"],
+            "source": s.get("source", "cli"),
             "start": min(times).strftime("%H:%M"),
             "end": max(times).strftime("%H:%M"),
             "start_sort": min(times).isoformat(),

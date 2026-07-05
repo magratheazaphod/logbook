@@ -225,6 +225,8 @@
   .pill.branch::before{content:"⎇ ";opacity:.7}
   .pill.turns{color:var(--muted)}
   .pill.tokens{color:var(--accent-ink)}
+  .pill.source-cowork{color:#4a3aa7;background:#ece9f9;border-color:#d7d0f0}
+  .pill.source-cowork::before{content:"⧉ ";opacity:.85}
 
   /* agent groups ------------------------------------------------------- */
   .agent{position:relative;margin-bottom:14px;animation:rise .35s ease both}
@@ -816,7 +818,15 @@ async function loadLog() {
       const title = el("span", "sess-title"); title.textContent = oneLine(en.summary || en.title); title.title = en.title;
       const turns = el("span", "pill turns"); turns.textContent = `${en.user_turns} prompt${en.user_turns!==1?"s":""}`;
       const tok = el("span", "pill tokens"); tok.textContent = fmtTokens(en.tokens || 0);
-      line.append(clk, title, turns, tok);
+      const parts = [clk, title];
+      if (en.source === "cowork") {
+        const badge = el("span", "pill source-cowork");
+        badge.textContent = "Cowork";
+        badge.title = "Ran in Claude Desktop's Cowork mode, not the Claude Code CLI";
+        parts.push(badge);
+      }
+      parts.push(turns, tok);
+      line.append(...parts);
       body.appendChild(line);
     }
     details.appendChild(body);
