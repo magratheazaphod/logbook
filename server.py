@@ -49,6 +49,11 @@ DEFAULT_BOARD = {"tasks": [], "ideas": [], "dayPlans": {}}
 # question, not real work) and dropped from the log.
 MIN_SESSION_TOKENS = int(os.environ.get("LOGBOOK_MIN_TOKENS", "1000"))
 
+# Day summaries get a stronger model than session summaries — one call per
+# day (not per session), and the "what mattered today" judgment call benefits
+# more from it than the 4-10 word session labels do.
+DAY_SUMMARY_MODEL = "claude-sonnet-5"
+
 # Claude Code worktrees created via `.claude/worktrees/<name>` get a randomly
 # generated name that has nothing to do with the project — fold them back
 # into their parent repo so the log groups by the actual project.
@@ -467,7 +472,7 @@ def _naive_summary(text):
     return " ".join(words[:10]) + ("…" if len(words) > 10 else "")
 
 
-def _call_claude_headless(prompt, max_words, timeout=30):
+def _call_claude_headless(prompt, max_words, timeout=30, model="claude-haiku-4-5-20251001"):
     """Run one headless `claude -p` call and return its stripped output, or
     None on any failure. The prompt is expected to carry INTERNAL_MARKER.
 
@@ -481,7 +486,7 @@ def _call_claude_headless(prompt, max_words, timeout=30):
     transcript = PROJECTS_DIR / encode_project_dir(str(ROOT)) / f"{call_id}.jsonl"
     try:
         r = subprocess.run(
-            [CLAUDE_BIN, "-p", prompt, "--model", "claude-haiku-4-5-20251001",
+            [CLAUDE_BIN, "-p", prompt, "--model", model,
              "--session-id", call_id, "--no-session-persistence"],
             capture_output=True, text=True, timeout=timeout, cwd=str(ROOT),
         )
@@ -658,7 +663,7 @@ def _generate_day_summary(entries):
     )
     # Returns None (not a fallback) when the LLM is unavailable, so the caller
     # can choose to show a transient fallback WITHOUT freezing it into the cache.
-    return _call_claude_headless(prompt, max_words=40) or None
+    return _call_claude_headless(prompt, max_words=40, model=DAY_SUMMARY_MODEL) or None
 
 
 def day_summary_for(day_str, entries, is_past):
