@@ -691,6 +691,22 @@ def set_day_summary(day_str, text):
     _save_day_summaries()
 
 
+def regenerate_day_summary(day_str):
+    """Force a fresh LLM call regardless of any cached or manually-edited
+    text, then store the result as auto-generated (not edited) so future
+    digest changes can still refresh it normally."""
+    entries, _ = _compute_day(date.fromisoformat(day_str))
+    if not entries:
+        raise ValueError("no sessions that day to summarize")
+    text = _generate_day_summary(entries)
+    if not text:
+        raise RuntimeError("LLM call failed")
+    cache = _load_day_summaries()
+    cache[day_str] = {"text": text, "digest": _day_summary_digest(entries), "edited": False}
+    _save_day_summaries()
+    return text
+
+
 def log_for_date(day_str):
     """Build the day's log, with entries/totals frozen to disk for any day
     that's already over — so revisiting a past day always shows exactly what
@@ -845,6 +861,15 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("missing date")
                 set_day_summary(day, text)
                 self._send(200, {"ok": True})
+            except Exception as e:
+                self._send(400, {"error": str(e)})
+        elif parsed.path == "/api/day-summary/regenerate":
+            try:
+                day = str(data.get("date", "")).strip()
+                if not day:
+                    raise ValueError("missing date")
+                text = regenerate_day_summary(day)
+                self._send(200, {"text": text})
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/match-issue":
