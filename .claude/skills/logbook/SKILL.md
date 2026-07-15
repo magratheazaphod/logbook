@@ -78,6 +78,20 @@ the mechanical layout, run instructions, and file responsibilities.
   tasks/ideas onto the current day to work from; anything not marked done rolls back to the top
   of Backlog/Ideas at end of day. Adding *new* items to a day's focus is only possible for
   the **current** day — past and future days render read-only.
+- **Board rev-guard, focus resync, and daily backups** (July 15, 2026) — added after a real
+  data-loss scare. What looked like "completed tasks reverted to doing and day plans vanished"
+  turned out to be two compounding issues: (1) past days' focus lists rendered every item with
+  done styling regardless of true status (`readOnlyRow` hardcoded `status-done`), so the user
+  believed in-progress items were completed; (2) the nightly rollover then legitimately swept
+  those not-done items back to the backlog and deleted the emptied day plans. The lost day
+  plans were recovered live from a still-open browser tab's in-memory `board` object
+  (extracted read-only via browser automation — never interact with a stale tab's UI, any
+  click autosaves its whole stale board). Fixes: `board.json` now carries a `rev` counter and
+  the server 409s any POST whose rev doesn't match (client reloads + toasts instead of
+  clobbering); tabs resync on focus/visibility; `readOnlyRow` shows true status; the server
+  snapshots the board to `data/backups/board-<date>.json` before each day's first write
+  (60 kept). A weekly cadence was considered and rejected — daily bounds loss at one day for
+  a ~20KB file. Data stays out of the public repo (`data/` additions gitignored).
 - **GitHub issue auto-matching**: adding a backlog task or idea searches a fixed set of repos
   (`jvc56/MAGPIE`, `magratheazaphod/scrabble-ai`, all of `domino14`, all of `woogles-io`) for an
   existing open issue that matches, and attaches a removable pill (✕ to unlink) if found. Repo

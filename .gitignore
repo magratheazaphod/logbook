@@ -10,3 +10,7 @@ data/day_log_cache.json
 data/day_summaries.json
 data/session_summaries.json
 data/logs/*.md
+data/backups/
+data/*.bak
+data/board.json.pre-recovery*
+data/recovered-*.json

@@ -30,7 +30,13 @@ logbook/
 
 - **Board** (`data/board.json`): `tasks[]` each have `id`, `title`, `status`
   (`backlog|doing|done`); `ideas[]` have `id`, `title`. The UI autosaves via `POST /api/board`.
-  An agent or cron job can append items to this file directly.
+  An agent or cron job can append items to this file directly (preserve the `rev` field).
+- **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
+  current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
+  clobbering newer saves — this once lost days of task history to a long-lived stale tab).
+  The UI also resyncs whenever its tab regains focus. Server bumps `rev` on every write.
+- **Backups**: before the first board write of each day, the server snapshots the previous
+  state to `data/backups/board-YYYY-MM-DD.json` (kept 60 days, gitignored).
 - **Daily log**: `GET /api/log?date=YYYY-MM-DD` reads `~/.claude/projects/**/*.jsonl`, groups that
   day's sessions, and returns start/end times, project, git branch, prompt counts, and a title
   (Claude Code's own session summary, falling back to the first user prompt). Rendered as a ledger.

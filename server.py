@@ -29,6 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BOARD_FILE = DATA_DIR / "board.json"
+BOARD_BACKUP_DIR = DATA_DIR / "backups"
+BOARD_BACKUP_KEEP = 60
 LOGS_DIR = DATA_DIR / "logs"
 INDEX_FILE = ROOT / "index.html"
 SUMMARY_CACHE_FILE = DATA_DIR / "session_summaries.json"
@@ -137,15 +139,33 @@ def load_board():
         data.setdefault("tasks", [])
         data.setdefault("ideas", [])
         data.setdefault("dayPlans", {})
+        data.setdefault("rev", 0)
         if roll_over_stale_day_plans(data):
+            data["rev"] += 1
             save_board(data)
         return data
     except Exception:
         return dict(DEFAULT_BOARD, tasks=[], ideas=[], dayPlans={})
 
 
+def backup_board_daily():
+    """Keep one dated copy of the board per day — its state before that day's
+    first change — pruned to BOARD_BACKUP_KEEP days. Safety net against a
+    stale client or bad edit clobbering data/board.json."""
+    if not BOARD_FILE.exists():
+        return
+    dest = BOARD_BACKUP_DIR / f"board-{date.today().isoformat()}.json"
+    if dest.exists():
+        return
+    BOARD_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(BOARD_FILE, dest)
+    for old in sorted(BOARD_BACKUP_DIR.glob("board-*.json"))[:-BOARD_BACKUP_KEEP]:
+        old.unlink()
+
+
 def save_board(data):
     ensure_data() if not DATA_DIR.exists() else None
+    backup_board_daily()
     tmp = BOARD_FILE.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -965,13 +985,21 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/board":
             try:
+                current = load_board()
+                # A client that loaded the board earlier than the last write
+                # (a tab left open for days, say) must not silently clobber
+                # everything saved since — hand it the fresh board instead.
+                if data.get("rev") != current.get("rev"):
+                    self._send(409, {"error": "stale", "board": current})
+                    return
                 board = {
                     "tasks": data.get("tasks", []),
                     "ideas": data.get("ideas", []),
                     "dayPlans": data.get("dayPlans", {}),
+                    "rev": current.get("rev", 0) + 1,
                 }
                 save_board(board)
-                self._send(200, {"ok": True})
+                self._send(200, {"ok": True, "rev": board["rev"]})
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/day-summary":

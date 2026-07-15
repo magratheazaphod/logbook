@@ -272,6 +272,7 @@
     color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:7px;
     padding:5px 10px;box-shadow:var(--shadow);opacity:0;transition:opacity .25s}
   .savenote.show{opacity:1}
+  .savenote.stale{color:#8a4b1f;background:#f7ead9;border-color:#e8d3b3}
 </style>
 </head>
 <body>
@@ -345,19 +346,57 @@ const STATUS_LABEL = { backlog: "todo", doing: "doing", done: "done" };
 
 // ---- persistence -------------------------------------------------------
 let saveTimer = null;
+let noteTimer = null;
+function flashNote(msg, warn) {
+  const n = $("#savenote");
+  n.textContent = msg; n.classList.toggle("stale", !!warn); n.classList.add("show");
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => n.classList.remove("show"), warn ? 2600 : 900);
+}
+
+function adoptBoard(fresh) {
+  board = fresh;
+  board.tasks ||= []; board.ideas ||= []; board.dayPlans ||= {};
+  renderTasks(); renderIdeas(); loadLog();
+}
+
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
-      await fetch("/api/board", {
+      const r = await fetch("/api/board", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(board)
       });
-      const n = $("#savenote"); n.classList.add("show");
-      setTimeout(() => n.classList.remove("show"), 900);
+      if (r.status === 409) {
+        // Our copy of the board is older than what's on disk (another tab
+        // saved since we loaded). Dropping this edit is the safe move —
+        // silently overwriting days of saves with a stale snapshot is not.
+        const data = await r.json();
+        adoptBoard(data.board);
+        flashNote("board changed elsewhere — reloaded, redo your last edit", true);
+        return;
+      }
+      const data = await r.json();
+      if (typeof data.rev === "number") board.rev = data.rev;
+      flashNote("saved");
     } catch (e) { /* offline / file:// — non-fatal */ }
   }, 350);
+}
+
+// A tab that sat in the background resyncs the moment it's looked at again,
+// so its stale in-memory board never gets a chance to clobber newer saves.
+async function resyncIfChanged() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch("/api/board");
+    const fresh = await r.json();
+    if ((fresh.rev ?? 0) !== (board.rev ?? 0)) {
+      adoptBoard(fresh);
+      flashNote("board updated elsewhere — reloaded", true);
+    }
+  } catch (e) { /* offline — non-fatal */ }
 }
 
 // ---- drag registry -------------------------------------------------------
@@ -643,9 +682,12 @@ function focusColumn(label, kind, dateKey, isToday, plan) {
 }
 
 function readOnlyRow(item, kind) {
-  const li = el("li", "row status-done");
+  // Show the item's real status — rendering everything as done here once
+  // convinced the owner that still-in-progress work had been completed.
+  const li = el("li", "row status-" + (item.status || "backlog"));
   const dot = el("span", "dot");
-  const chip = el("span", "chip"); chip.appendChild(dot);
+  const lbl = el("span", "lbl"); lbl.textContent = STATUS_LABEL[item.status] || "todo";
+  const chip = el("span", "chip"); chip.append(dot, lbl);
   const body = el("div", "body");
   const title = el("div", "title"); title.textContent = item.title;
   body.appendChild(title);
@@ -896,6 +938,9 @@ async function boot() {
   $("#datePick").addEventListener("change", e => {
     if (e.target.value) { logDate = new Date(e.target.value + "T12:00:00"); loadLog(); }
   });
+
+  window.addEventListener("focus", resyncIfChanged);
+  document.addEventListener("visibilitychange", resyncIfChanged);
 
   initResizer();
   loadLog();
