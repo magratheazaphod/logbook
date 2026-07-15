@@ -527,25 +527,25 @@ function renderIdeas() {
   for (const idea of board.ideas) list.appendChild(ideaRow(idea, "ideas"));
 }
 
-function ideaRow(idea, listId, opts) {
-  const interactive = !!(opts && opts.doneToggle);
+function ideaRow(idea, listId) {
   const { arr, onChange } = DND[listId];
-  const li = el("li", "row status-" + (interactive && idea.done ? "done" : "backlog"));
+  const li = el("li", "row status-" + (idea.status || "backlog"));
   li.dataset.id = idea.id;
   const grip = makeDraggable(li, idea.id, listId);
+
+  const chip = el("button", "chip");
+  chip.title = "Click to change status";
+  chip.setAttribute("aria-label", "status: " + (STATUS_LABEL[idea.status] || "todo"));
   const dot = el("span", "dot");
-  dot.style.borderColor = "var(--accent)";
-  dot.style.background = interactive && idea.done ? "var(--accent)" : "transparent";
-  let chip;
-  if (interactive) {
-    chip = el("button", "chip");
-    chip.title = "Click to mark done";
-    chip.setAttribute("aria-label", idea.done ? "done" : "not done");
-    chip.onclick = () => { idea.done = !idea.done; onChange(); save(); };
-  } else {
-    chip = el("span", "chip");
-  }
-  chip.appendChild(dot);
+  const lbl = el("span", "lbl"); lbl.textContent = STATUS_LABEL[idea.status] || "todo";
+  chip.append(dot, lbl);
+  chip.onclick = () => {
+    const i = STATUSES.indexOf(idea.status);
+    idea.status = STATUSES[(i + 1) % STATUSES.length];
+    idea.updated = new Date().toISOString();
+    onChange(); save();
+  };
+
   const body = el("div", "body");
   const title = el("div", "title");
   title.contentEditable = "true"; title.spellcheck = false; title.textContent = idea.title;
@@ -578,7 +578,8 @@ function addTask() {
 }
 function addIdea() {
   const inp = $("#ideaInput"); const v = inp.value.trim(); if (!v) return;
-  const idea = { id: crypto.randomUUID(), title: v, created: new Date().toISOString() };
+  const idea = { id: crypto.randomUUID(), title: v, status: "backlog",
+    created: new Date().toISOString(), updated: new Date().toISOString() };
   board.ideas.push(idea);
   inp.value = ""; renderIdeas(); save();
   checkForMatchingIssue(idea, board.ideas, renderIdeas);
@@ -626,7 +627,7 @@ function focusColumn(label, kind, dateKey, isToday, plan) {
       list.appendChild(e);
     } else {
       for (const item of arr) {
-        list.appendChild(kind === "task" ? taskRow(item, listId) : ideaRow(item, listId, { doneToggle: true }));
+        list.appendChild(kind === "task" ? taskRow(item, listId) : ideaRow(item, listId));
       }
     }
   } else {

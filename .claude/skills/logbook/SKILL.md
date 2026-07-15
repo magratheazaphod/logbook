@@ -9,8 +9,13 @@ user-invocable: true
 ## What it is and why
 
 A personal, stdlib-only command deck the user built for themselves: a **backlog**, a place
-for **higher-level ideas**, and a **daily log** that reconstructs itself from Claude Code
-agent session transcripts (`~/.claude/projects/**/*.jsonl`). The point is a single low-friction
+for **higher-level ideas**, and a **daily log** that reconstructs itself from agent session
+transcripts read from **two sources**: Claude Code CLI sessions (`~/.claude/projects/**/*.jsonl`)
+and Claude Desktop **Cowork** sessions
+(`~/Library/Application Support/Claude/local-agent-mode-sessions/**` — each Cowork task runs in
+its own sandbox with a *nested* `.claude/projects` dir inside it; override with
+`COWORK_SESSIONS_DIR`; a small denylist in `server.py` filters known-junk onboarding chats).
+The point is a single low-friction
 page that shows "what am I supposed to be doing" and "what did I actually do today" without
 hand-maintaining either. It is explicitly a small, personal-scale tool — not a product, not
 multi-user, not meant to scale past one person's task list. See the repo's own `CLAUDE.md` for
@@ -28,9 +33,10 @@ the mechanical layout, run instructions, and file responsibilities.
 - **Degrade gracefully, don't crash.** The transcript parser skips lines/records it doesn't
   recognize rather than erroring, so a future Claude Code log-format change doesn't break the
   whole daily log.
-- **Cheap by default for any LLM calls.** Headless `claude -p` calls (session summaries, day
-  summaries, GitHub-issue keyword extraction) use `claude-haiku-4-5` — the cheapest available
-  model — confirmed deliberately, not by accident.
+- **Cheap by default for any LLM calls.** Headless `claude -p` calls use the cheapest model
+  that does the job — confirmed deliberately, not by accident. Session summaries and
+  GitHub-issue keyword extraction use `claude-haiku-4-5`; day summaries were later upgraded to
+  Sonnet 5 (`DAY_SUMMARY_MODEL`) because Haiku's one-sentence day rollups weren't good enough.
 - **Cache aggressively, but only what's actually stable.** Past days' logs, session summaries,
   and day-summaries are memoized to disk once their period is over; **today is never cached**
   (it's still being written). A manual edit to a day-summary is flagged and permanently wins
