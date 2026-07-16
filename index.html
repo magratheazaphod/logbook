@@ -53,7 +53,15 @@
 
   /* Layout ---------------------------------------------------------------- */
   .grid{display:flex;align-items:flex-start}
-  .board-col{flex:0 0 var(--board-width, 420px);min-width:0;padding-right:26px}
+  .board-col{
+    flex:0 0 var(--board-width, 420px);min-width:0;padding-right:26px;
+    /* Own scroll rail: the backlog can grow long, but Today's Focus lives in
+       the right column — pinning this pane lets you scroll deep into the
+       backlog and still drag onto today without the drop target scrolling off. */
+    position:sticky;top:20px;align-self:flex-start;
+    max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;
+    scrollbar-gutter:stable;
+  }
   .log-col{flex:1 1 auto;min-width:0;padding-left:26px}
   .resizer{
     flex:none;align-self:stretch;width:17px;margin:0 -8px;cursor:col-resize;
@@ -67,7 +75,8 @@
   body.resizing{cursor:col-resize;user-select:none}
   @media (max-width:880px){
     .grid{flex-direction:column;gap:44px}
-    .board-col{flex-basis:auto!important;width:100%;padding-right:0}
+    .board-col{flex-basis:auto!important;width:100%;padding-right:0;
+      position:static;max-height:none;overflow:visible}
     .log-col{padding-left:0}
     .resizer{display:none}
   }
@@ -83,6 +92,21 @@
   .col-head .count{font-family:var(--mono);font-size:12px;color:var(--faint)}
 
   section.block{margin-bottom:34px}
+
+  /* Search box (filters backlog + ideas) ---------------------------------- */
+  .board-search{
+    position:sticky;top:0;z-index:3;background:var(--paper);
+    padding-bottom:14px;margin-bottom:2px;
+  }
+  .board-search input{
+    width:100%;color:var(--ink);font:inherit;
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:9px 12px 9px 34px;box-shadow:var(--shadow);
+    background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%23A69C9A' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.5' y2='16.5'/%3E%3C/svg%3E") no-repeat 11px 50%;
+  }
+  .board-search input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  li.row.filtered-out{display:none}
+  .empty.search-empty{font-style:normal}
 
   /* Add row --------------------------------------------------------------- */
   .add{display:flex;gap:8px;margin-bottom:14px}
@@ -289,6 +313,10 @@
   <div class="grid">
     <!-- LEFT: board ----------------------------------------------------- -->
     <div class="board-col">
+      <div class="board-search">
+        <input id="boardSearch" type="search" placeholder="Search backlog &amp; ideas…"
+          aria-label="Search backlog and ideas" autocomplete="off">
+      </div>
       <section class="block">
         <div class="col-head">
           <h2>Backlog</h2>
@@ -464,6 +492,35 @@ function handleDrop(e, targetListId, targetId) {
   save();
 }
 
+// ---- search filter -----------------------------------------------------
+// Hides non-matching backlog/idea rows in place (rather than re-rendering a
+// filtered list) so drag indices and row identity are untouched. Matches on
+// the visible title plus any linked-issue pill text.
+let searchQuery = "";
+function applyBoardFilter() {
+  const q = searchQuery.trim().toLowerCase();
+  for (const [listSel, name] of [["#taskList", "backlog"], ["#ideaList", "ideas"]]) {
+    const list = $(listSel);
+    if (!list) continue;
+    const rows = list.querySelectorAll("li.row");
+    let shown = 0;
+    for (const li of rows) {
+      const title = li.querySelector(".title")?.textContent || "";
+      const issue = li.querySelector(".issue-link")?.textContent || "";
+      const match = !q || (title + " " + issue).toLowerCase().includes(q);
+      li.classList.toggle("filtered-out", !match);
+      if (match) shown++;
+    }
+    let note = list.querySelector(".search-empty");
+    if (q && rows.length && shown === 0) {
+      if (!note) { note = el("div", "empty search-empty"); list.appendChild(note); }
+      note.textContent = `No ${name} items match “${searchQuery.trim()}”.`;
+    } else if (note) {
+      note.remove();
+    }
+  }
+}
+
 // ---- board rendering ---------------------------------------------------
 function renderTasks() {
   registerList("backlog", board.tasks, renderTasks, "task");
@@ -476,6 +533,7 @@ function renderTasks() {
     list.appendChild(e); return;
   }
   for (const t of board.tasks) list.appendChild(taskRow(t, "backlog"));
+  applyBoardFilter();
 }
 
 // Small pill shown under a task/idea's title when a matching GitHub issue
@@ -564,6 +622,7 @@ function renderIdeas() {
     list.appendChild(e); return;
   }
   for (const idea of board.ideas) list.appendChild(ideaRow(idea, "ideas"));
+  applyBoardFilter();
 }
 
 function ideaRow(idea, listId) {
@@ -931,6 +990,12 @@ async function boot() {
   $("#taskInput").addEventListener("keydown", e => { if (e.key === "Enter") addTask(); });
   $("#ideaAdd").onclick = addIdea;
   $("#ideaInput").addEventListener("keydown", e => { if (e.key === "Enter") addIdea(); });
+
+  const boardSearch = $("#boardSearch");
+  boardSearch.addEventListener("input", e => { searchQuery = e.target.value; applyBoardFilter(); });
+  boardSearch.addEventListener("keydown", e => {
+    if (e.key === "Escape") { boardSearch.value = ""; searchQuery = ""; applyBoardFilter(); }
+  });
 
   $("#prevDay").onclick = () => shiftDay(-1);
   $("#nextDay").onclick = () => shiftDay(1);
