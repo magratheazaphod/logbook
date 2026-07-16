@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Logbook Field Guide — front-end patterns from one small page</title>
+<style>
+  :root{
+    --paper:#F1E6E4;
+    --card:#FBFAF9;
+    --ink:#1B1D1E;
+    --muted:#6B6664;
+    --faint:#A69C9A;
+    --line:#E3D2CE;
+    --line-strong:#D2BDB8;
+    --accent:#B23A2E;
+    --accent-ink:#7C2620;
+    --accent-soft:#F5DEDA;
+    --accent-soft-line:#E6C6C1;
+    --done:#8A8D8A;
+    --warn-ink:#8A4B1F;
+    --warn-bg:#F7EAD9;
+    --warn-line:#E8D3B3;
+    --code-bg:#2A2220;
+    --code-ink:#EDE2DE;
+    --code-comment:#A08D88;
+    --code-accent:#E8998D;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#211A18;
+      --card:#2C2422;
+      --ink:#EDE6E3;
+      --muted:#A89A96;
+      --faint:#71645F;
+      --line:#3B302C;
+      --line-strong:#4C3D38;
+      --accent:#D96A5C;
+      --accent-ink:#F0B3AA;
+      --accent-soft:#452622;
+      --accent-soft-line:#5C332D;
+      --done:#7A7D7A;
+      --warn-ink:#E3B183;
+      --warn-bg:#3A2D1E;
+      --warn-line:#54402A;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="light"]{
+    --paper:#F1E6E4; --card:#FBFAF9; --ink:#1B1D1E; --muted:#6B6664;
+    --faint:#A69C9A; --line:#E3D2CE; --line-strong:#D2BDB8;
+    --accent:#B23A2E; --accent-ink:#7C2620; --accent-soft:#F5DEDA;
+    --accent-soft-line:#E6C6C1; --done:#8A8D8A;
+    --warn-ink:#8A4B1F; --warn-bg:#F7EAD9; --warn-line:#E8D3B3;
+    --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
+  }
+  :root[data-theme="dark"]{
+    --paper:#211A18; --card:#2C2422; --ink:#EDE6E3; --muted:#A89A96;
+    --faint:#71645F; --line:#3B302C; --line-strong:#4C3D38;
+    --accent:#D96A5C; --accent-ink:#F0B3AA; --accent-soft:#452622;
+    --accent-soft-line:#5C332D; --done:#7A7D7A;
+    --warn-ink:#E3B183; --warn-bg:#3A2D1E; --warn-line:#54402A;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:16px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:34px 24px 110px}
+
+  header.top{
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    padding-bottom:18px;margin-bottom:8px;
+    border-bottom:1px solid var(--line-strong);
+  }
+  .mark{width:11px;height:11px;border-radius:50%;background:var(--accent);
+    align-self:center;box-shadow:0 0 0 3px var(--accent-soft);flex:none}
+  header.top h1{font-size:22px;font-weight:650;letter-spacing:-.02em;margin:0;text-wrap:balance}
+  header.top .tag{color:var(--muted);font-size:13px;font-family:var(--mono)}
+  .lede{color:var(--muted);font-size:15.5px;margin:18px 0 0}
+  .lede b{color:var(--ink);font-weight:600}
+
+  nav.toc{margin:30px 0 8px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 22px}
+  nav.toc .toc-head{font-size:11px;font-weight:650;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  nav.toc ol{margin:0;padding-left:1.4em;columns:2;column-gap:34px}
+  @media (max-width:560px){nav.toc ol{columns:1}}
+  nav.toc li{margin:3px 0;font-size:14px}
+  nav.toc a{color:var(--ink);text-decoration:none}
+  nav.toc a:hover{color:var(--accent);text-decoration:underline}
+
+  section.ch{margin-top:58px}
+  .ch-eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+  section.ch h2{font-size:21px;font-weight:650;letter-spacing:-.015em;
+    margin:0 0 14px;text-wrap:balance}
+  section.ch h3{font-size:15.5px;font-weight:650;margin:28px 0 8px}
+  p{margin:.75em 0}
+  a{color:var(--accent-ink)}
+  ul,ol{margin:.6em 0;padding-left:1.5em}
+  li{margin:.25em 0}
+  strong{font-weight:650}
+  code{font-family:var(--mono);font-size:.86em;background:var(--card);
+    border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+
+  pre{
+    background:var(--code-bg);color:var(--code-ink);
+    border-radius:var(--radius);padding:15px 18px;overflow-x:auto;
+    font-family:var(--mono);font-size:12.75px;line-height:1.6;margin:14px 0;
+  }
+  pre code{background:none;border:0;padding:0;font-size:inherit;color:inherit}
+  pre .c{color:var(--code-comment);font-style:italic}
+  pre .a{color:var(--code-accent)}
+
+  .demo{
+    background:var(--paper);border:1px dashed var(--line-strong);
+    border-radius:var(--radius);padding:20px 20px;margin:14px 0;
+  }
+  .demo-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+
+  .aside{
+    background:var(--accent-soft);border:1px solid var(--accent-soft-line);
+    border-left:3px solid var(--accent);border-radius:8px;
+    padding:12px 16px;margin:18px 0;font-size:14.5px;color:var(--accent-ink);
+  }
+  .aside b{font-weight:650}
+
+  /* --- swatches --------------------------------------------------------- */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+  .swatch{background:var(--card);border:1px solid var(--line);border-radius:8px;
+    overflow:hidden;box-shadow:var(--shadow)}
+  .swatch .chipbox{height:44px}
+  .swatch .info{padding:7px 10px;font-family:var(--mono);font-size:10.5px;line-height:1.5}
+  .swatch .info b{display:block;font-weight:600;font-size:11px;font-family:var(--sans);letter-spacing:.01em}
+  .swatch .info span{color:var(--muted)}
+
+  /* --- logbook components, reproduced for demos -------------------------- */
+  .row{
+    display:flex;align-items:flex-start;gap:11px;list-style:none;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:11px 12px;box-shadow:var(--shadow);margin:0 0 8px;
+  }
+  .row:last-child{margin-bottom:0}
+  .grip{flex:none;margin-top:1px;cursor:grab;color:var(--faint);font-size:13px;
+    line-height:1;padding:2px 1px;user-select:none}
+  .chip{flex:none;margin-top:1px;display:flex;align-items:center;gap:7px;
+    background:none;border:0;padding:0;font:inherit;cursor:pointer}
+  .dot{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--line-strong);flex:none}
+  .status-backlog .dot{border-color:var(--faint)}
+  .status-doing .dot{background:var(--accent);border-color:var(--accent)}
+  .status-done .dot{background:var(--done);border-color:var(--done)}
+  .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint);width:52px;text-align:left}
+  .status-doing .lbl{color:var(--accent)}
+  .rowbody{flex:1;min-width:0}
+  .status-done .rowtitle{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
+  .del{flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
+    font-size:15px;line-height:1;padding:2px 4px;border-radius:6px;opacity:0;transition:opacity .12s}
+  .row:hover .del,.row:focus-within .del{opacity:1}
+  .del:hover{color:var(--accent);background:var(--accent-soft)}
+  .del:focus-visible{outline:2px solid var(--accent);outline-offset:1px;opacity:1}
+
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
+    background:var(--paper);border:1px solid var(--line);color:var(--muted);
+    display:inline-block}
+  .pill.proj{color:var(--accent-ink);background:var(--accent-soft);border-color:var(--accent-soft-line)}
+  .pill.branch::before{content:"⎇ ";opacity:.7}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+
+  .empty-demo{border:1px dashed var(--line-strong);border-radius:var(--radius);
+    padding:14px 12px;font-size:12.5px;text-align:center;color:var(--faint);font-style:italic}
+
+  .ledger-demo{position:relative;margin-left:6px;padding-left:26px}
+  .ledger-demo::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;
+    width:2px;background:var(--line-strong)}
+  .agent{position:relative;margin-bottom:12px}
+  .agent:last-child{margin-bottom:0}
+  .agent::before{content:"";position:absolute;left:-26px;top:15px;width:10px;height:10px;
+    border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--paper)}
+  .agent > summary{
+    list-style:none;cursor:pointer;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:11px 14px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .agent > summary::-webkit-details-marker{display:none}
+  .agent > summary::before{content:"▸";display:inline-block;color:var(--faint);
+    font-size:11px;transition:transform .15s;flex:none}
+  .agent[open] > summary::before{transform:rotate(90deg)}
+  .agent-name{font-weight:600;font-size:14px}
+  .agent-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:auto}
+  .agent-sessions{display:flex;flex-direction:column;gap:6px;margin:8px 0 0 2px;
+    padding-left:12px;border-left:2px solid var(--line)}
+  .sess-line{display:flex;align-items:baseline;gap:10px;background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:8px 11px;box-shadow:var(--shadow)}
+  .sess-line .clock{font-family:var(--mono);font-size:11px;color:var(--muted);flex:none}
+  .sess-line .sess-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;font-size:13px}
+
+  .focus-demo-input{width:100%;color:var(--ink);font:inherit;
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:9px 12px;box-shadow:var(--shadow);background:var(--card)}
+  .focus-demo-input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+
+  .type-specimen{display:flex;flex-direction:column;gap:14px}
+  .type-specimen .spec{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .spec-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);flex:none;width:190px}
+  .t-h1{font-size:21px;font-weight:650;letter-spacing:-.02em}
+  .t-label{font-size:12px;font-weight:650;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+  .t-body{font-size:15px}
+  .t-meta{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+  th{font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-strong)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);padding:4px 12px}
+  td.dec{font-weight:600;min-width:150px}
+  td.alt{color:var(--muted);min-width:150px}
+
+  .kbd-note{color:var(--muted);font-size:13px;font-family:var(--mono)}
+  footer{margin-top:70px;padding-top:18px;border-top:1px solid var(--line-strong);
+    color:var(--muted);font-size:13px}
+  footer .pill{margin-right:6px}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <span class="mark" aria-hidden="true"></span>
+    <h1>The Logbook Field Guide</h1>
+    <span class="tag">front-end patterns · one page, no build step</span>
+  </header>
+
+  <p class="lede">
+    The logbook UI is a single <code>index.html</code>: roughly <b>300 lines of CSS</b> and
+    <b>650 lines of vanilla JavaScript</b>, no framework, no build step, no webfonts, no icon
+    library. That constraint is what makes it a good textbook — every technique in it is a
+    plain-CSS or plain-DOM idea you can reuse anywhere, including inside React or any other
+    framework later. This guide walks the real code, pattern by pattern, and closes with a
+    ledger of design decisions where an alternative was considered and rejected. The page
+    you're reading is set in the logbook's own design system, so most patterns are
+    demonstrated live in place.
+  </p>
+
+  <nav class="toc" aria-label="Chapters">
+    <div class="toc-head">Chapters</div>
+    <ol>
+      <li><a href="#ch1">Design tokens</a></li>
+      <li><a href="#ch2">Color: a neutral ramp, one signal</a></li>
+      <li><a href="#ch3">Typography without webfonts</a></li>
+      <li><a href="#ch4">Surfaces and depth</a></li>
+      <li><a href="#ch5">Layout: flex, sticky, and a resizer</a></li>
+      <li><a href="#ch6">A component vocabulary</a></li>
+      <li><a href="#ch7">State, feedback, and motion</a></li>
+      <li><a href="#ch8">JS patterns that serve the design</a></li>
+      <li><a href="#ch9">The decision ledger</a></li>
+      <li><a href="#ch10">Exercises</a></li>
+    </ol>
+  </nav>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch1">
+    <div class="ch-eyebrow">Chapter 1</div>
+    <h2>Design tokens: the whole theme lives in <code>:root</code></h2>
+    <p>
+      The first 17 lines of the stylesheet are the most important ones in the file. Every
+      color, radius, shadow, and font stack is declared once as a <strong>CSS custom
+      property</strong> (a "variable") on <code>:root</code>, and the other ~280 lines only
+      ever reference those names:
+    </p>
+<pre><code>:root{
+  --paper:#F1E6E4;   <span class="c">/* the page ground */</span>
+  --card:#FBFAF9;    <span class="c">/* raised surfaces sit on the paper */</span>
+  --ink:#1B1D1E;     <span class="c">/* primary text */</span>
+  --muted:#6B6664;   <span class="c">/* secondary text */</span>
+  --faint:#A69C9A;   <span class="c">/* tertiary: hints, idle icons */</span>
+  --line:#E3D2CE;    <span class="c">/* default hairline border */</span>
+  --line-strong:#D2BDB8;
+  <span class="a">--accent:#B23A2E;</span>  <span class="c">/* brick red — the one signal colour */</span>
+  --accent-ink:#7C2620;
+  --accent-soft:#F5DEDA;
+  --done:#8A8D8A;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+}</code></pre>
+    <p>
+      This is the pattern design systems call <strong>tokens</strong>: named decisions,
+      separated from the components that use them. Three practical payoffs:
+    </p>
+    <ul>
+      <li><strong>One knob per decision.</strong> Change <code>--accent</code> and every
+        focus ring, status dot, hover state, and timeline dot updates together. There is no
+        find-and-replace across the file, and no drift where two buttons end up slightly
+        different reds.</li>
+      <li><strong>The names encode roles, not colors.</strong> <code>--muted</code>, not
+        <code>--gray-600</code>. When you read <code>color:var(--faint)</code> in a rule
+        you know the element's importance without seeing it rendered.</li>
+      <li><strong>Theming becomes trivial.</strong> Redefine the same token names in a
+        different scope (a media query, a <code>data-theme</code> attribute) and the whole
+        page re-skins — no component rule changes. This guide's dark mode works exactly that
+        way; the logbook itself deliberately doesn't have one (see the ledger, chapter 9).</li>
+    </ul>
+    <p>
+      Note that <code>--radius</code>, <code>--shadow</code>, and the two font stacks are
+      tokens too. Non-color decisions drift just as easily as colors do.
+    </p>
+    <div class="aside">
+      <b>Alternative discarded:</b> a CSS framework (Tailwind, Bootstrap) or a Sass build
+      would give tokens too — but the project's founding rule is <i>no dependencies, no
+      build step</i>. Custom properties are the standards-native way to get the same
+      discipline for free, and unlike Sass variables they're live at runtime, which
+      chapter 5's resizer exploits.
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch2">
+    <div class="ch-eyebrow">Chapter 2</div>
+    <h2>Color: a neutral ramp and exactly one signal</h2>
+    <p>
+      Squint at the logbook and it's a warm, quiet field with small red marks on it. That is
+      the entire color strategy, and it has two halves.
+    </p>
+    <h3>The neutral ramp</h3>
+    <p>
+      Text gets <strong>three levels of importance</strong> — <code>--ink</code> for
+      content, <code>--muted</code> for supporting text (counts, timestamps), and
+      <code>--faint</code> for things you should barely notice until you need them (drag
+      grips, placeholders, idle buttons). Borders get two (<code>--line</code>,
+      <code>--line-strong</code>). Crucially, the neutrals aren't gray: they are
+      <em>rose-tinted</em> grays (<code>#A69C9A</code>, <code>#E3D2CE</code>) that share a hue
+      family with the <code>#F1E6E4</code> paper. Neutrals mixed toward the page's hue look
+      chosen; pure <code>#999</code> on a warm ground looks like a default nobody picked.
+    </p>
+    <div class="demo">
+      <div class="demo-label">The palette, live from this page's tokens</div>
+      <div class="swatches">
+        <div class="swatch"><div class="chipbox" style="background:var(--paper);border-bottom:1px solid var(--line)"></div><div class="info"><b>--paper</b><span>page ground</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--card);border-bottom:1px solid var(--line)"></div><div class="info"><b>--card</b><span>raised surface</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--ink)"></div><div class="info"><b>--ink</b><span>primary text</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--muted)"></div><div class="info"><b>--muted</b><span>secondary text</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--faint)"></div><div class="info"><b>--faint</b><span>tertiary / idle</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--line)"></div><div class="info"><b>--line</b><span>hairline border</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--accent)"></div><div class="info"><b>--accent</b><span>the signal</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--accent-ink)"></div><div class="info"><b>--accent-ink</b><span>accent as text</span></div></div>
+        <div class="swatch"><div class="chipbox" style="background:var(--accent-soft);border-bottom:1px solid var(--line)"></div><div class="info"><b>--accent-soft</b><span>accent as ground</span></div></div>
+      </div>
+    </div>
+    <h3>The accent comes in three strengths</h3>
+    <p>
+      This is the most reusable idea in the file. The brick red isn't one color, it's a
+      <strong>trio</strong> covering the three jobs a color can have:
+    </p>
+    <ul>
+      <li><code>--accent</code> (<span class="pill" style="background:var(--accent);color:#fff;border-color:var(--accent)">B23A2E</span>)
+        — full strength, for small filled shapes: status dots, focus rings, the 2px timeline rail dot.</li>
+      <li><code>--accent-ink</code> — a darker version that stays readable when the red is
+        used <em>as text</em> on light backgrounds (hover labels, pill text).</li>
+      <li><code>--accent-soft</code> — a pale wash used <em>as a background</em> behind
+        accent-colored text (pills, callouts, hover states of small buttons).</li>
+    </ul>
+    <p>
+      A common beginner mistake is having only the full-strength color and using it for
+      everything — big red text (too loud, poor contrast) and red-on-red hover states
+      (illegible). One hue, three strengths, three jobs.
+    </p>
+    <h3>Why only one accent?</h3>
+    <p>
+      Because color is a budget. With one signal color, red always <em>means something</em>:
+      "active", "interactive", "look here". The moment a second decorative hue appears, both
+      lose meaning. The logbook spends outside the budget only twice, and both are
+      <em>semantic</em>, not decorative: an amber <code>.warn</code> style for warnings, and
+      a purple pill marking sessions that came from Cowork rather than the CLI — a genuinely
+      different category of data, given a genuinely different hue.
+    </p>
+    <div class="aside">
+      <b>Documented choice:</b> the rose/brick theme is an explicit aesthetic preference
+      recorded in the project history — not a default that happened to ship. The lesson
+      isn't "use brick red"; it's that the ramp-plus-one-signal <i>structure</i> works with
+      any hue you pour into it.
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch3">
+    <div class="ch-eyebrow">Chapter 3</div>
+    <h2>Typography without webfonts</h2>
+    <p>
+      The logbook loads zero font files. It declares two <strong>system font stacks</strong>
+      and gets native-feeling, fast, always-available type on every OS:
+    </p>
+<pre><code>--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;</code></pre>
+    <p>
+      The interesting part is the <strong>division of labor</strong>. The sans face is for
+      prose: titles, task text, summaries. The mono face is for anything <em>data-flavored</em>:
+      timestamps, counts, token totals, pills, branch names, uppercase labels. This gives the
+      page two visual "voices" — reading voice and instrument-panel voice — without a second
+      font download. Mono also aligns digits into columns for free, which is why the session
+      clock times (<span class="t-meta">09:14–11:52</span>) scan so cleanly.
+    </p>
+    <div class="demo">
+      <div class="demo-label">The four type roles</div>
+      <div class="type-specimen">
+        <div class="spec"><span class="spec-note">heading · 21px/650, -0.02em</span><span class="t-h1">Logbook</span></div>
+        <div class="spec"><span class="spec-note">label · 12px/650, +0.11em caps</span><span class="t-label">Daily Log</span></div>
+        <div class="spec"><span class="spec-note">body · 15px sans</span><span class="t-body">Fix the date picker so it uses local time</span></div>
+        <div class="spec"><span class="spec-note">meta · 12px mono, muted</span><span class="t-meta">3 sessions · 214K tokens</span></div>
+      </div>
+    </div>
+    <h3>Letter-spacing runs opposite to size</h3>
+    <p>
+      Two rules from the real stylesheet, side by side:
+    </p>
+<pre><code>.brand h1 { font-size:21px; letter-spacing:<span class="a">-.02em</span>; }   <span class="c">/* big → tighten */</span>
+.col-head h2 {
+  font-size:12px; letter-spacing:<span class="a">.11em</span>;             <span class="c">/* small caps label → open up */</span>
+  text-transform:uppercase; color:var(--muted);
+}</code></pre>
+    <p>
+      Large text is tracked slightly <em>tighter</em> (negative letter-spacing) because at
+      display sizes the default gaps look loose. Small uppercase labels are tracked
+      <em>wider</em>, because capitals packed at text spacing become a dense brick. This
+      pairing — tight-big, loose-small-caps — is one of the fastest ways to make an interface
+      look typeset instead of merely rendered.
+    </p>
+    <h3>The scale is narrow and deliberate</h3>
+    <p>
+      Every font size in the file falls between <strong>10.5px and 21px</strong> — a factor
+      of two, total. Hierarchy comes mostly from <em>weight, case, color, and family</em>,
+      not from size jumps: a section header is smaller than body text but reads as a header
+      because it's bold, uppercase, letterspaced, and muted. Quiet scales are what make dense
+      utility UIs feel calm.
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch4">
+    <div class="ch-eyebrow">Chapter 4</div>
+    <h2>Surfaces and depth: paper, card, hairline, whisper</h2>
+    <p>
+      The logbook builds depth from four ingredients, all subtle:
+    </p>
+    <ol>
+      <li><strong>Two surface levels.</strong> The page is <code>--paper</code>; anything
+        you can act on (a task row, an input, a button) sits on a lighter
+        <code>--card</code>. Interactive things literally rise off the page.</li>
+      <li><strong>A hairline border</strong> (<code>1px solid var(--line)</code>) in the
+        same warm family, so edges are defined without being drawn attention to.</li>
+      <li><strong>A whisper of shadow.</strong> The shadow token stacks <em>two</em> layers
+        at 5% and 3% opacity: <code>0 1px 2px rgba(20,20,20,.05), 0 1px 1px
+        rgba(20,20,20,.03)</code>. You can't point at it, but remove it and every card goes
+        flat. Layered low-alpha shadows read as ambient light; a single
+        <code>0 4px 12px rgba(0,0,0,.3)</code> reads as a sticker.</li>
+      <li><strong>One radius token</strong> (<code>10px</code>) for cards and inputs, with
+        smaller one-off radii (8px, 6px, 5px) for nested or tiny elements — inner elements
+        get smaller radii than their containers, which keeps corners looking concentric.</li>
+    </ol>
+    <div class="demo">
+      <div class="demo-label">Card recipe: surface + hairline + whisper shadow</div>
+      <div class="row status-doing" style="margin-bottom:0">
+        <span class="grip" title="Drag to reorder">⠿</span>
+        <span class="chip"><span class="dot"></span><span class="lbl">doing</span></span>
+        <div class="rowbody"><div class="rowtitle">Hover this card — a delete button fades in on the right</div></div>
+        <button class="del" aria-label="Delete (demo only)" onclick="return false">✕</button>
+      </div>
+    </div>
+    <p>
+      One more paper trick worth stealing: the brand dot in the header gets a halo with
+      <code>box-shadow:0 0 0 3px var(--accent-soft)</code>. A zero-blur, spread-only box
+      shadow is the cheapest way to draw a <strong>ring</strong> around anything — no extra
+      element, no outline quirks. The same trick reappears in chapter 6 doing something
+      cleverer.
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch5">
+    <div class="ch-eyebrow">Chapter 5</div>
+    <h2>Layout: flex columns, a sticky rail, and a CSS-variable resizer</h2>
+    <p>
+      The page is two columns — board on the left, daily log on the right — built with
+      flexbox rather than grid, and the reason is instructive.
+    </p>
+<pre><code>.grid      { display:flex; align-items:flex-start; }
+.board-col { flex:0 0 <span class="a">var(--board-width, 420px)</span>; min-width:0; }
+.log-col   { flex:1 1 auto; min-width:0; }</code></pre>
+    <h3>Why flex here: the resizable column</h3>
+    <p>
+      The board column's width is a <strong>runtime CSS variable</strong>. The drag handle
+      between the columns is ~20 lines of JS that does nothing but update that one custom
+      property and remember it:
+    </p>
+<pre><code>boardCol.style.setProperty("--board-width", w + "px");   <span class="c">// during drag</span>
+localStorage.setItem("logbook.boardWidth", Math.round(w)); <span class="c">// on release</span></code></pre>
+    <p>
+      Because the stylesheet reads <code>var(--board-width, 420px)</code> — note the
+      <strong>fallback value</strong> after the comma — the CSS fully defines the default
+      layout and JS only ever nudges one number. This is the cleanest split of
+      responsibilities for dynamic layout: JS owns the <em>value</em>, CSS owns everything
+      the value <em>means</em>. The handle itself is a classic touch-target trick: a 17px-wide
+      invisible strip (easy to grab) drawing a 2px visible line via <code>::after</code>
+      (visually quiet).
+    </p>
+    <h3>The sticky column with its own scroll rail</h3>
+    <p>
+      The backlog can grow very long while "Today's Focus" — the drop target you drag tasks
+      onto — lives in the right column. If both columns scrolled with the page, scrolling
+      deep into the backlog would push the drop target off-screen. The fix, with the actual
+      comment from the source:
+    </p>
+<pre><code>.board-col{
+  <span class="c">/* Own scroll rail: the backlog can grow long, but Today's Focus lives in
+     the right column — pinning this pane lets you scroll deep into the
+     backlog and still drag onto today without the drop target scrolling off. */</span>
+  position:sticky; top:20px; align-self:flex-start;
+  max-height:calc(100vh - 40px); overflow-y:auto;
+  <span class="a">scrollbar-gutter:stable;</span>
+}</code></pre>
+    <p>
+      Three details make this work: <code>align-self:flex-start</code> (a stretched flex
+      child can't stick — it's already full height), <code>max-height</code> +
+      <code>overflow-y:auto</code> (the pinned pane scrolls internally), and
+      <code>scrollbar-gutter:stable</code> (reserves scrollbar width so content doesn't
+      jump sideways when the scrollbar appears). Note also that the comment itself is a
+      design artifact: it records <em>why</em>, which is exactly what the next reader —
+      or the next you — needs.
+    </p>
+    <h3><code>min-width:0</code>, the flexbox tax</h3>
+    <p>
+      Both columns and several inner elements declare <code>min-width:0</code>. By default a
+      flex child refuses to shrink below its content's intrinsic width, so one long
+      unbreakable string (a URL, a branch name) blows the layout open. <code>min-width:0</code>
+      waives that, which is also the prerequisite for text-overflow ellipsis on session
+      titles: <code>white-space:nowrap; overflow:hidden; text-overflow:ellipsis</code> only
+      truncates once the element is actually allowed to be narrow.
+    </p>
+    <h3>Responsive: collapse, don't redesign</h3>
+<pre><code>@media (max-width:880px){
+  .grid{flex-direction:column;gap:44px}
+  .board-col{position:static;max-height:none;overflow:visible; …}
+  .resizer{display:none}
+}</code></pre>
+    <p>
+      One breakpoint. Below it, the columns stack, the sticky behavior and the resizer are
+      simply switched off. For a personal tool this is the right amount of responsive design:
+      the page stays usable on a narrow window without maintaining a second layout. (Grid
+      does appear where it fits better: Today's Focus is
+      <code>display:grid; grid-template-columns:1fr 1fr</code> — two equal cells with no
+      sizing negotiation is exactly what grid is for.)
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch6">
+    <div class="ch-eyebrow">Chapter 6</div>
+    <h2>A component vocabulary in pure CSS</h2>
+    <p>
+      Five recurring components carry the whole interface. None needs JavaScript to look or
+      behave the way it does.
+    </p>
+
+    <h3>6.1 · Pills</h3>
+    <p>
+      Small metadata badges: mono font, 11px, <code>border-radius:999px</code> (an
+      arbitrarily large radius always yields a perfect capsule at any width). The base pill
+      is neutral; variants only swap the color trio — accent-tinted for project names,
+      purple for the Cowork source badge. Unicode glyphs stand in for an icon set:
+      <code>.pill.branch::before{content:"⎇ "}</code>.
+    </p>
+    <div class="demo">
+      <div class="demo-label">Pill variants</div>
+      <div class="pillrow">
+        <span class="pill">4 prompts</span>
+        <span class="pill">182K</span>
+        <span class="pill proj">logbook</span>
+        <span class="pill branch">main</span>
+        <span class="pill" style="color:#4a3aa7;background:#ece9f9;border-color:#d7d0f0">⧉ Cowork</span>
+      </div>
+    </div>
+
+    <h3>6.2 · Status dots — state as a parent class</h3>
+    <p>
+      A task's status is written <em>once</em>, as a class on the row
+      (<code>status-doing</code>), and descendant selectors restyle the parts:
+    </p>
+<pre><code>.dot{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--line-strong)}
+.status-backlog .dot{border-color:var(--faint)}       <span class="c">/* empty circle = waiting */</span>
+.status-doing   .dot{background:var(--accent); …}     <span class="c">/* filled red = active   */</span>
+.status-done    .dot{background:var(--done); …}       <span class="c">/* filled gray = spent   */</span>
+.status-done .title{color:var(--done);text-decoration:line-through;
+                    <span class="a">text-decoration-thickness:1px</span>}</code></pre>
+    <p>
+      The encoding is shape-and-fill, not just hue: empty vs. filled reads even where the
+      colors don't. When status changes, JS swaps one class and the dot, label, and
+      strikethrough all follow — the CSS is the state machine's display layer. (The
+      <code>text-decoration-thickness:1px</code> keeps the strikethrough from feeling like a
+      censor bar at 15px text.)
+    </p>
+    <div class="demo">
+      <div class="demo-label">One class change drives everything</div>
+      <div class="row status-backlog"><span class="chip"><span class="dot"></span><span class="lbl">todo</span></span><div class="rowbody"><div class="rowtitle">Wire up the cron daily narrative</div></div></div>
+      <div class="row status-doing"><span class="chip"><span class="dot"></span><span class="lbl">doing</span></span><div class="rowbody"><div class="rowtitle">Write the front-end field guide</div></div></div>
+      <div class="row status-done" style="margin-bottom:0"><span class="chip"><span class="dot"></span><span class="lbl">done</span></span><div class="rowbody"><div class="rowtitle">Guard the board against stale-tab overwrites</div></div></div>
+    </div>
+
+    <h3>6.3 · Hover-reveal actions, with the keyboard escape hatch</h3>
+<pre><code>.row .del{ …; opacity:0; transition:opacity .12s }
+li.row:hover .del, <span class="a">li.row:focus-within .del</span>{ opacity:1 }</code></pre>
+    <p>
+      Destructive buttons stay invisible until the row is hovered, keeping thirty rows from
+      showing thirty ✕s. The crucial half is <code>:focus-within</code>: tabbing into the
+      row also reveals the button, so keyboard users aren't locked out by a mouse-only
+      affordance. Any time you hide an action behind hover, pair it with
+      <code>:focus-within</code>.
+    </p>
+
+    <h3>6.4 · The ledger rail — a timeline from two pseudo-elements</h3>
+    <p>
+      The daily log's vertical timeline uses no extra markup at all. The container draws a
+      2px line in its left padding via <code>::before</code>; each entry draws a dot on that
+      line via its own <code>::before</code> — and here the ring trick from chapter 4
+      returns with a twist:
+    </p>
+<pre><code>.ledger{position:relative;padding-left:26px}
+.ledger::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;
+  width:2px;background:var(--line-strong)}          <span class="c">/* the rail */</span>
+.agent::before{content:"";position:absolute;left:-26px;top:15px;
+  width:10px;height:10px;border-radius:50%;background:var(--accent);
+  <span class="a">box-shadow:0 0 0 3px var(--paper)</span>}               <span class="c">/* the dot punches a hole */</span></code></pre>
+    <p>
+      The paper-colored ring around each dot visually <em>erases</em> the rail where the dot
+      sits, so the line appears to pass behind it. No masking, no SVG — one box-shadow.
+    </p>
+
+    <h3>6.5 · Collapsible groups: native <code>&lt;details&gt;</code>, restyled</h3>
+    <p>
+      Each project group is a <code>&lt;details&gt;</code>/<code>&lt;summary&gt;</code>
+      element, so expand/collapse, keyboard toggling, and open-state come free from the
+      browser. CSS removes the default marker and substitutes a rotating caret:
+    </p>
+<pre><code>.agent > summary{list-style:none}                     <span class="c">/* drop default marker */</span>
+.agent > summary::-webkit-details-marker{display:none}
+.agent > summary::before{content:"▸";transition:transform .15s}
+.agent[open] > summary::before{<span class="a">transform:rotate(90deg)</span>}</code></pre>
+    <div class="demo">
+      <div class="demo-label">Live: rail + dots + native disclosure (click the headers)</div>
+      <div class="ledger-demo">
+        <details class="agent" open>
+          <summary><span class="agent-name">logbook</span><span class="agent-meta">2 sessions · 214K tokens</span></summary>
+          <div class="agent-sessions">
+            <div class="sess-line"><span class="clock">09:14–11:52</span><span class="sess-title">Guard the board against stale-tab overwrites</span><span class="pill">182K</span></div>
+            <div class="sess-line"><span class="clock">14:03–14:20</span><span class="sess-title">Fix daily log using UTC date instead of local date</span><span class="pill">32K</span></div>
+          </div>
+        </details>
+        <details class="agent">
+          <summary><span class="agent-name">scrabble-ai</span><span class="agent-meta">1 session · 96K tokens</span></summary>
+          <div class="agent-sessions">
+            <div class="sess-line"><span class="clock">16:40–17:25</span><span class="sess-title">Endgame solver move ordering</span><span class="pill">96K</span></div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <h3>6.6 · Empty states are designed, not blank</h3>
+    <p>
+      Every list has a styled empty state, and drop targets use a <strong>dashed border</strong>
+      — the visual convention for "something goes here":
+    </p>
+    <div class="demo">
+      <div class="demo-label">Empty drop target</div>
+      <div class="empty-demo">Drag tasks here from the Tasks list to focus on them today.</div>
+    </div>
+    <p>
+      Note the copy: it names the action, the source, and the payoff in one sentence. Empty
+      states are the one moment the UI gets to teach; the logbook never wastes them on
+      "No items."
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch7">
+    <div class="ch-eyebrow">Chapter 7</div>
+    <h2>State, feedback, and motion</h2>
+    <h3>Focus is the accent's most important job</h3>
+<pre><code>.add input:focus{
+  outline:2px solid var(--accent); outline-offset:1px;
+  <span class="a">border-color:transparent</span>;
+}</code></pre>
+    <p>
+      Every focusable element gets the same treatment: a 2px accent outline, offset so it
+      doesn't crowd the content, with the regular border hidden so the two don't stack into
+      a muddy double edge. Because it's one consistent signature, focus reads as "the system
+      is listening here" everywhere — inputs, editable titles, the date picker. Never remove
+      focus outlines; restyle them once, in the accent, and reuse everywhere.
+    </p>
+    <div class="demo">
+      <div class="demo-label">Click or tab into this input</div>
+      <input class="focus-demo-input" type="text" placeholder="Add a task…" aria-label="Focus ring demo">
+    </div>
+    <h3>Motion: three animations, all with jobs</h3>
+    <ul>
+      <li><strong>Rise</strong> — log entries fade in and travel 4px upward over 0.35s when a
+        day loads. Just enough to say "this content arrived", far below the threshold of
+        annoyance on the hundredth viewing.</li>
+      <li><strong>Spin</strong> — the ↻ regenerate button rotates while its request is in
+        flight, keyed to <code>:disabled</code>. The busy indicator <em>is</em> the button;
+        no spinner element is added or removed.</li>
+      <li><strong>Micro-transitions</strong> — hovers and reveals run at 0.1–0.15s. At that
+        duration a transition is felt as smoothness rather than watched as movement.</li>
+    </ul>
+<pre><code>.agent{animation:rise .35s ease both}
+<span class="a">@media (prefers-reduced-motion:reduce){.agent{animation:none}}</span>
+@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}</code></pre>
+    <p>
+      The reduced-motion guard is one line and non-negotiable: users who disable animation
+      OS-wide (often for vestibular reasons) get the content instantly.
+    </p>
+    <h3>Ambient feedback: the save note</h3>
+    <p>
+      Saving is silent and debounced (chapter 8), so the only confirmation is a small fixed
+      toast in the corner — mono, muted, fading in for 900ms. It has a second, longer-lived
+      amber variant (<code>.savenote.stale</code>) for the one message that matters:
+      "board changed elsewhere — reloaded, redo your last edit." Routine feedback whispers;
+      exceptional feedback changes color and sticks around. Amber is also used for the
+      missing-sessions-folder warning — a third semantic color, spent only on "something
+      needs your attention but isn't broken."
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch8">
+    <div class="ch-eyebrow">Chapter 8</div>
+    <h2>JS patterns that serve the design</h2>
+    <p>
+      The JavaScript isn't the subject of this guide, but four of its patterns are really
+      front-end <em>design</em> decisions wearing JS clothes.
+    </p>
+    <h3>8.1 · A three-line "framework"</h3>
+<pre><code>const $  = s => document.querySelector(s);
+const el = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
+const esc = s => String(s).replace(/[&amp;&lt;&gt;"]/g, m => ({'&amp;':'&amp;amp;', …}[m]));</code></pre>
+    <p>
+      Everything renders through <code>el()</code>: build nodes, set
+      <code>textContent</code>, append. Using <code>textContent</code> instead of
+      <code>innerHTML</code> for user data makes cross-site-scripting impossible by
+      construction; <code>esc()</code> exists for the few places markup is assembled as a
+      string. The broader pattern is <strong>state → render</strong>: the board lives in one
+      JS object, and <code>renderTasks()</code> rebuilds its list from that object after
+      every change. That's the same one-way mental model as React, minus React — the DOM is
+      never the source of truth. At a few dozen rows, "throw it away and rebuild" costs
+      nothing and eliminates the whole category of the-DOM-and-the-data-disagree bugs.
+    </p>
+    <h3>8.2 · Edit-in-place with <code>contenteditable</code></h3>
+    <p>
+      Task titles are just <code>&lt;div contenteditable&gt;</code> — no hidden input
+      swapped in on click, no edit mode. Blur commits (empty edits revert), Enter is
+      remapped to blur, and the placeholder for the empty day-summary is pure CSS:
+    </p>
+<pre><code>.day-summary:empty::before{
+  content:<span class="a">attr(data-placeholder)</span>; color:var(--faint); font-style:italic;
+}</code></pre>
+    <p>
+      The <code>:empty::before + attr()</code> trick gives any editable element
+      input-style placeholder text with zero JS.
+    </p>
+    <h3>8.3 · Filtering by hiding, not re-rendering</h3>
+    <p>
+      The search box <em>hides</em> non-matching rows with a class
+      (<code>li.row.filtered-out{display:none}</code>) rather than re-rendering a filtered
+      list. The source comment explains why: the rows are drag-and-drop sources whose
+      identity and indices must stay stable — re-rendering a subset would break dragging
+      while a filter is active. A general lesson: when elements carry interaction state,
+      prefer <strong>hiding to rebuilding</strong>.
+    </p>
+    <h3>8.4 · Optimistic saves with a stale-tab guard</h3>
+    <p>
+      Every mutation renders immediately, then a <strong>debounced</strong> save fires 350ms
+      after the last change — type three characters, get one network call. The interesting
+      part is what happens when a save is <em>wrong</em>: the board carries a revision
+      counter, and a POST from a tab holding an outdated copy gets a 409, at which point the
+      client adopts the server's board and tells the user, rather than silently overwriting
+      newer data. That protocol was added after a real incident (a long-lived stale tab cost
+      days of task history). UI honesty — the amber toast, the resync-on-focus — is the
+      user-visible half of a data-integrity design.
+    </p>
+    <h3>8.5 · One more: the inline SVG icon</h3>
+    <p>
+      The search field's magnifying glass is an SVG embedded directly in the CSS as a
+      <code>data:</code> URI background image — one icon, zero requests, zero icon fonts.
+      Worth knowing for any "I need exactly one icon" moment. (Its stroke color is
+      hard-coded in the URI, which is the technique's one wart: data-URI SVGs can't see
+      CSS variables. Modern alternative if you ever need themed icons: CSS
+      <code>mask-image</code> with <code>background-color:var(--faint)</code>.)
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch9">
+    <div class="ch-eyebrow">Chapter 9</div>
+    <h2>The decision ledger: alternatives considered and discarded</h2>
+    <p>
+      Design maturity shows less in what a project has than in what it deliberately
+      doesn't. These are from the project's recorded history — real decisions, not
+      reconstructions — except where marked <em>inferred</em>.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Chosen</th><th>Discarded</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="dec">Vanilla JS + stdlib server</td>
+            <td class="alt">Framework, bundler, npm</td>
+            <td>Founding constraint: nothing to install, nothing to break, one file to read. Every problem so far has fit inside it.</td>
+          </tr>
+          <tr>
+            <td class="dec">Rose paper / brick accent</td>
+            <td class="alt">Default light gray-on-white</td>
+            <td>Explicit aesthetic preference, recorded as such. A personal tool should look like its person.</td>
+          </tr>
+          <tr>
+            <td class="dec">Light theme only</td>
+            <td class="alt">Dark mode</td>
+            <td>Never requested; the paper look <em>is</em> the identity. The token architecture means adding one later is ~20 lines (this guide's own dark mode is exactly that, as proof).</td>
+          </tr>
+          <tr>
+            <td class="dec">Rev counter + 409 on stale saves</td>
+            <td class="alt">Last-write-wins autosave</td>
+            <td>Last-write-wins was the original design — until a stale background tab silently clobbered days of task history. Losing one edit loudly beats losing days silently.</td>
+          </tr>
+          <tr>
+            <td class="dec">Daily board backups</td>
+            <td class="alt">Weekly cadence</td>
+            <td>Considered and rejected: daily bounds worst-case loss at one day, and the file is ~20KB — the storage argument for weekly didn't exist.</td>
+          </tr>
+          <tr>
+            <td class="dec">Read-only rows show true status</td>
+            <td class="alt">Styling all past-day items as done</td>
+            <td>The original hardcoded done-styling made in-progress work look finished — a display shortcut that misled the owner and compounded into apparent data loss. Visual state must never contradict data state.</td>
+          </tr>
+          <tr>
+            <td class="dec">Filter by hiding rows</td>
+            <td class="alt">Re-rendering a filtered list</td>
+            <td>Rows are drag sources; rebuilding them mid-filter breaks drag identity and indices (documented in a source comment).</td>
+          </tr>
+          <tr>
+            <td class="dec">Sticky board with own scroll rail</td>
+            <td class="alt">Both columns scroll with the page</td>
+            <td>The drag-onto-today interaction dies if the drop target can scroll off-screen (documented in a source comment).</td>
+          </tr>
+          <tr>
+            <td class="dec">Native <code>&lt;details&gt;</code> disclosure</td>
+            <td class="alt">JS accordion <em>(inferred)</em></td>
+            <td>The browser already ships toggle behavior, keyboard support, and open-state; CSS restyles the marker. Zero JS to maintain.</td>
+          </tr>
+          <tr>
+            <td class="dec">One breakpoint, columns stack</td>
+            <td class="alt">A designed mobile experience</td>
+            <td>Mobile came up as "tell me what it'd take" — an informational question, deliberately not built. Matching effort to actual need is a design decision too.</td>
+          </tr>
+          <tr>
+            <td class="dec">Show sessions ≥ 1,000 tokens</td>
+            <td class="alt">The original 5,000 cutoff</td>
+            <td>Thresholds are design: 5,000 kept the ledger tidy but hid real work. Tuned on feedback, not theory.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The meta-lesson across the ledger: almost every reversal came from <strong>watching the
+      thing get used</strong> — a scare, a misleading display, a hidden session — not from a
+      redesign. Small tools earn their design through incidents.
+    </p>
+  </section>
+
+  <!-- ================================================================ -->
+  <section class="ch" id="ch10">
+    <div class="ch-eyebrow">Chapter 10</div>
+    <h2>Exercises</h2>
+    <p>
+      Each of these is small, touches the real file, and exercises one chapter. The token
+      architecture means none of them should require touching more than a handful of lines.
+    </p>
+    <ol>
+      <li><strong>Re-skin it (ch. 1–2).</strong> Change only the <code>:root</code> block to
+        a different palette — say, a cool slate paper with a pine-green accent. Keep the
+        ramp structure: ground, surface, three inks, two lines, one accent in three
+        strengths. If you have to edit anything outside <code>:root</code>, you've found a
+        hard-coded color that escaped the token system (there are a couple — the Cowork
+        purple and some pill border colors are honest examples of token drift).</li>
+      <li><strong>Add dark mode (ch. 1, 9).</strong> Wrap a second set of token values in
+        <code>@media (prefers-color-scheme: dark)</code>. Don't invert — darken the paper
+        toward warm brown-black and <em>lighten</em> the accent (dark backgrounds need
+        brighter accents for the same perceived contrast; compare this page's two themes).</li>
+      <li><strong>Add a fourth status (ch. 6).</strong> Introduce <code>blocked</code>:
+        extend the <code>STATUSES</code> array and add a <code>.status-blocked</code> ruleset.
+        Notice how little JS changes — the CSS state-class pattern absorbs the feature.</li>
+      <li><strong>Build a pill variant (ch. 6).</strong> Add <code>.pill.stale</code> using
+        the amber warn colors for sessions older than some age. One selector, three
+        declarations.</li>
+      <li><strong>Break <code>min-width:0</code> on purpose (ch. 5).</strong> Delete it from
+        <code>.log-col</code>, add a session with a very long unbroken title, and watch the
+        layout blow out. The fastest way to internalize the flexbox minimum-size rule is to
+        see the failure once.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <span class="pill proj">logbook</span><span class="pill">index.html · ~1,000 lines</span>
+    <p style="margin:12px 0 0">
+      Set in the logbook's own tokens — brick on rose paper, system sans for prose,
+      <span style="font-family:var(--mono)">ui-monospace</span> for the instrument panel.
+      The dark theme is the chapter-10 exercise, done.
+    </p>
+  </footer>
+</div>
+</body>
+</html>
