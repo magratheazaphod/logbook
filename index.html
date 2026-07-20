@@ -787,7 +787,26 @@ function tinyMarkdown(src) {
   close(); return out;
 }
 
+// Single-flight guard around loadLogOnce: only one /api/log request is ever in
+// flight at a time. A second call that lands while one is running — e.g. a
+// focus/visibility resync firing during the slow first-time generation of a
+// day's summary — is coalesced into a single re-run afterward instead of firing
+// its own fetch. Two overlapping fetches would otherwise each clear-then-append
+// the pane (rendering the day twice) and, because the server is threaded with no
+// lock, each trigger the summary's claude -p call (billing twice).
+let logLoading = false, logPending = false;
 async function loadLog() {
+  if (logLoading) { logPending = true; return; }
+  logLoading = true;
+  try {
+    await loadLogOnce();
+  } finally {
+    logLoading = false;
+    if (logPending) { logPending = false; loadLog(); }  // a request arrived mid-load — re-run once with the current logDate
+  }
+}
+
+async function loadLogOnce() {
   $("#datePick").value = iso(logDate);
   const out = $("#logOut"); out.innerHTML = "";
   let data;
