@@ -670,7 +670,7 @@ function addTask() {
   const inp = $("#taskInput"); const v = inp.value.trim(); if (!v) return;
   const t = { id: crypto.randomUUID(), title: v, status: "backlog",
     created: new Date().toISOString(), updated: new Date().toISOString() };
-  board.tasks.push(t);
+  board.tasks.unshift(t);  // new items land on top so they don't require scrolling to find
   inp.value = ""; renderTasks(); save();
   checkForMatchingIssue(t, board.tasks, renderTasks);
 }
@@ -678,7 +678,7 @@ function addIdea() {
   const inp = $("#ideaInput"); const v = inp.value.trim(); if (!v) return;
   const idea = { id: crypto.randomUUID(), title: v, status: "backlog",
     created: new Date().toISOString(), updated: new Date().toISOString() };
-  board.ideas.push(idea);
+  board.ideas.unshift(idea);  // new items land on top so they don't require scrolling to find
   inp.value = ""; renderIdeas(); save();
   checkForMatchingIssue(idea, board.ideas, renderIdeas);
 }
