@@ -124,6 +124,62 @@ the mechanical layout, run instructions, and file responsibilities.
   informational question — a pattern worth recognizing: not every "can we..." question is a
   request to build it.
 
+## Screenshots / demos on synthetic data
+
+For README screenshots, marketing, or reproducing a bug without exposing the user's real
+board and transcripts. Established July 2026; the working generator is
+`scratchpad/make_demo.py` from that session, worth re-deriving from this recipe.
+
+**Run a throwaway copy of the app, never the real one.** Copy `server.py`, `index.html` and
+`icons/` into a scratch dir with its own `data/`, and run it on a spare port. `DATA_DIR` is
+hardcoded to `ROOT/data`, so a separate directory is the only way to isolate the board — but
+both transcript roots *are* env-overridable:
+
+```bash
+PORT=8899 CLAUDE_PROJECTS_DIR="$D/projects" COWORK_SESSIONS_DIR="$D/cowork" python3 server.py
+```
+
+**Fabricate transcripts** as `.jsonl` under `projects/<cwd-with-slashes-as-dashes>/<uuid>.jsonl`.
+Each line is a JSON object with `type` (`user`/`assistant`), `sessionId`, `cwd`, `gitBranch`,
+`timestamp`, and `message: {role, content:[{type:"text",text:...}], usage:{...}}`. A leading
+`{"type":"summary","summary":...}` line sets the title. Gotchas:
+
+- **Timestamps must carry a real local offset** (`datetime.astimezone()`). A bare `Z` on local
+  clock times shifts every session by the UTC delta in the ledger.
+- **Each session needs ≥ `MIN_SESSION_TOKENS` (1000)** across its `usage` blocks or it's
+  silently dropped.
+- **Cowork sessions** need a sidecar `cowork/local_<uuid>.json` holding
+  `{"title":..., "userSelectedFolders":[...]}` plus the transcript at
+  `cowork/local_<uuid>/.claude/projects/<enc>/<uuid>.jsonl`. That's what earns the Cowork badge.
+
+**Pre-seed both summary caches so no billable headless `claude` call fires.**
+`data/session_summaries.json` is `{session_id: {"summary": ...}}`; `data/day_summaries.json`
+entries with `"edited": true` short-circuit generation outright. Belt-and-braces: launch with
+`PATH=/usr/bin:/bin` so `shutil.which("claude")` finds nothing.
+
+**`dayPlans` holds full item objects, not id references** — `{date: {"tasks":[{...}], "ideas":[...]}}`.
+And `roll_over_stale_day_plans` runs on every `load_board()`: on a *past* day it pushes any
+non-`done` item back onto the top of the backlog and deletes the emptied plan. So a past-day
+plan used for a screenshot must contain only `status: "done"` items, or it will silently
+duplicate that task into the backlog and vanish.
+
+**Kill the server before editing `data/board.json`, and wait ~2s.** A live server plus any open
+tab will re-save over the file; a 1s sleep proved too short. Close the browser tab too — a stale
+tab resyncs on focus and clobbers hand-written board state (see the standing preference above).
+
+**Screenshot with headless Chrome, not the browser extension** — the extension applies its own
+zoom and crops unpredictably. This is deterministic and 2×:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+  --hide-scrollbars --force-device-scale-factor=2 --virtual-time-budget=6000 \
+  --window-size=1400,1020 --screenshot=out.png "http://localhost:8899/"
+```
+
+The date isn't URL-addressable. To capture a past day, temporarily patch
+`let logDate = new Date();` in the scratch copy's `index.html` to a fixed date, shoot, restore.
+Downscale for the repo with `sips -Z 1600`.
+
 ## Known open items (context, not a todo list)
 
 - The public GitHub repo may lag behind local `server.py`/`index.html` changes at any given

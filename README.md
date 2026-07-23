@@ -9,6 +9,20 @@ A lightweight personal command deck: a **backlog**, a place for **higher-level i
 
 No dependencies, no build step. Just Python 3 (already on your Mac) and one HTML file.
 
+![The Logbook UI: a backlog and ideas list on the left, and the day's Claude Code sessions on the
+right](docs/screenshots/1-deck.png)
+
+Everything on one screen: the backlog and ideas on the left, today's focus and the session ledger
+on the right. The ledger builds itself — each line is a real Claude Code session with its own
+one-line summary, and sessions run in Claude Desktop's Cowork mode are marked as such.
+
+![The same UI showing a previous day, with that day's finished work and session
+ledger](docs/screenshots/2-archive.png)
+
+Step back to any earlier date and you get that day's ledger, its narrative, and whatever you'd
+finished that day. Unfinished items don't linger on a past day — they roll back to the top of the
+backlog, so the archive only ever shows what actually got done.
+
 ## Run it
 
 ```bash
