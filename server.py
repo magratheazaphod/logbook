@@ -13,6 +13,7 @@ Then open:       http://localhost:8787
 """
 
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -33,6 +34,7 @@ BOARD_BACKUP_DIR = DATA_DIR / "backups"
 BOARD_BACKUP_KEEP = 60
 LOGS_DIR = DATA_DIR / "logs"
 INDEX_FILE = ROOT / "index.html"
+ICONS_DIR = ROOT / "icons"
 SUMMARY_CACHE_FILE = DATA_DIR / "session_summaries.json"
 DAY_LOG_CACHE_FILE = DATA_DIR / "day_log_cache.json"
 DAY_SUMMARY_FILE = DATA_DIR / "day_summaries.json"
@@ -951,6 +953,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_icon(self, name):
+        """Serve one file out of icons/ — the only static directory we expose.
+
+        Names come straight off the URL, so resolve and confirm the result is
+        still inside icons/ before reading anything.
+        """
+        target = (ICONS_DIR / name).resolve()
+        if target.parent != ICONS_DIR.resolve() or not target.is_file():
+            self._send(404, {"error": "not found"})
+            return
+        ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # Icons change only when make-icons.py is re-run, so let the browser
+        # (and the installed app) hold onto them for a day.
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, *args):
         pass  # quiet
 
@@ -960,6 +983,27 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/" or path == "/index.html":
                 self._send(200, INDEX_FILE.read_text(encoding="utf-8"), "text/html; charset=utf-8")
+            elif path.startswith("/icons/"):
+                self._send_icon(path[len("/icons/"):])
+            elif path == "/favicon.ico":
+                self._send_icon("favicon.ico")
+            elif path == "/manifest.webmanifest":
+                # Lets Chrome's "Install as app" give Logbook a real Dock icon
+                # and its own chromeless window.
+                self._send(200, {
+                    "name": "Logbook",
+                    "short_name": "Logbook",
+                    "start_url": "/",
+                    "display": "standalone",
+                    "background_color": "#F1E6E4",
+                    "theme_color": "#F1E6E4",
+                    "icons": [
+                        {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                        {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                        {"src": "/icons/icon-maskable-512.png", "sizes": "512x512",
+                         "type": "image/png", "purpose": "maskable"},
+                    ],
+                }, "application/manifest+json")
             elif path == "/api/board":
                 self._send(200, load_board())
             elif path == "/api/log/dates":
