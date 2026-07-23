@@ -185,5 +185,8 @@ Downscale for the repo with `sips -Z 1600`.
 - The public GitHub repo may lag behind local `server.py`/`index.html` changes at any given
   time — check with `git status`/`git log` before assuming parity; don't push without being
   asked.
-- The "Auto-write the daily narrative on a schedule" cron idea in `CLAUDE.md` is designed but
-  not wired up.
+- The hand-written `data/logs/<date>.md` narrative (a pink panel above the ledger) and its
+  never-wired-up cron job were **removed in July 2026**. The user judged it duplicative of the
+  LLM day summary, which had absorbed the same job; no such file was ever created in the repo's
+  lifetime. Don't propose a second narrative surface without a reason the day summary can't
+  cover.

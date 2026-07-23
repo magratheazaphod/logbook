@@ -238,14 +238,6 @@
   .day-summary-regen:disabled{opacity:1;cursor:default;animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  .note{
-    background:var(--accent-soft);border:1px solid #e6c6c1;border-left:3px solid var(--accent);
-    border-radius:8px;padding:12px 15px;margin:0 0 22px;font-size:14px;color:var(--accent-ink)
-  }
-  .note h3{margin:.2em 0 .3em;font-size:14px}
-  .note p{margin:.4em 0}
-  .note ul{margin:.4em 0;padding-left:1.2em}
-
   /* the ledger rail */
   .ledger{position:relative;margin-left:6px;padding-left:26px}
   .ledger::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line-strong)}
@@ -774,26 +766,6 @@ function oneLine(s) {
   return String(s).replace(/\s+/g, " ").trim();
 }
 
-function tinyMarkdown(src) {
-  const lines = esc(src).split("\n");
-  let out = "", inList = false;
-  const close = () => { if (inList) { out += "</ul>"; inList = false; } };
-  for (let raw of lines) {
-    const line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    if (/^\s*[-*]\s+/.test(line)) {
-      if (!inList) { out += "<ul>"; inList = true; }
-      out += "<li>" + line.replace(/^\s*[-*]\s+/, "") + "</li>";
-    } else if (/^###?\s+/.test(line)) {
-      close(); out += "<h3>" + line.replace(/^###?\s+/, "") + "</h3>";
-    } else if (line.trim() === "") {
-      close();
-    } else {
-      close(); out += "<p>" + line + "</p>";
-    }
-  }
-  close(); return out;
-}
-
 // Single-flight guard around loadLogOnce: only one /api/log request is ever in
 // flight at a time. A second call that lands while one is running — e.g. a
 // focus/visibility resync firing during the slow first-time generation of a
@@ -905,15 +877,10 @@ async function loadLogOnce() {
     out.appendChild(sum);
   }
 
-  if (data.note && data.note.trim()) {
-    const n = el("div", "note"); n.innerHTML = tinyMarkdown(data.note.trim());
-    out.appendChild(n);
-  }
-
   if (!data.entries || !data.entries.length) {
     const e = el("div", "log-empty");
     e.innerHTML = data.projects_dir_exists
-      ? "No Claude Code activity logged on this day.<br><span style='font-size:12px'>Drop a note at <code>data/logs/" + iso(logDate) + ".md</code> to add a narrative for any day.</span>"
+      ? "No Claude Code activity logged on this day."
       : "Point me at your sessions and this day will fill in automatically.";
     out.appendChild(e);
     return;

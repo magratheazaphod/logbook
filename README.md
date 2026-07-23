@@ -19,7 +19,7 @@ one-line summary, and sessions run in Claude Desktop's Cowork mode are marked as
 ![The same UI showing a previous day, with that day's finished work and session
 ledger](docs/screenshots/2-archive.png)
 
-Step back to any earlier date and you get that day's ledger, its narrative, and whatever you'd
+Step back to any earlier date and you get that day's summary, its ledger, and whatever you'd
 finished that day. Unfinished items don't linger on a past day — they roll back to the top of the
 backlog, so the archive only ever shows what actually got done.
 
@@ -70,9 +70,10 @@ back to your first prompt).
 
 - `data/board.json` — your backlog + ideas. Plain JSON, so a Claude Code agent or a cron job can
   append tasks to it directly. The UI autosaves here whenever you make a change.
-- `data/logs/YYYY-MM-DD.md` — **optional** narrative for a given day. If a file exists for the date
-  you're viewing, its contents render at the top of that day's log (supports `#` headings,
-  `-` bullets, and `**bold**`). This is the hook for a written "what I actually did" summary.
+- `data/day_summaries.json` — the one-line "what I did today" for each day, written for you from
+  that day's sessions. Edit one in the UI and it stays edited; hit regenerate to redo it.
+- `data/session_summaries.json` — the per-session one-liners in the ledger, cached so a repeat
+  page load is instant.
 
 ## Where the sessions come from
 
@@ -84,18 +85,15 @@ CLAUDE_PROJECTS_DIR=/path/to/projects python3 server.py
 
 Nothing leaves your machine — the server binds to `127.0.0.1` only and makes no outbound calls.
 
-## Optional: auto-write a narrative summary each day
+## Summaries
 
-The ledger is generated live from raw sessions, so it works with zero setup. If you also want a
-written summary (a real "here's what I shipped today" paragraph), have Claude Code write one on a
-schedule. For example, a cron entry that asks Claude Code to summarize the day into the log folder:
+Every line in the ledger gets a one-sentence "what actually happened here," and each past day
+gets a one-line summary of the whole day. Both are written by Claude Code from your own
+transcripts, on demand as you view a day, and cached so you only pay for them once. There's
+nothing to schedule and nothing to set up.
 
-```cron
-# 9pm daily — write today's narrative into the logbook
-0 21 * * *  cd ~/dev/logbook && claude -p "Summarize what I worked on today from my Claude Code sessions. Write 3-5 bullets to data/logs/$(date +\%F).md" >> ~/logbook-cron.log 2>&1
-```
-
-Then that day's log shows your narrative on top and the raw session ledger beneath it.
+Don't like a day's summary? Edit it in place and it stays edited, or hit regenerate for a fresh
+one.
 
 ## Notes
 

@@ -32,7 +32,6 @@ DATA_DIR = ROOT / "data"
 BOARD_FILE = DATA_DIR / "board.json"
 BOARD_BACKUP_DIR = DATA_DIR / "backups"
 BOARD_BACKUP_KEEP = 60
-LOGS_DIR = DATA_DIR / "logs"
 INDEX_FILE = ROOT / "index.html"
 ICONS_DIR = ROOT / "icons"
 SUMMARY_CACHE_FILE = DATA_DIR / "session_summaries.json"
@@ -98,7 +97,6 @@ INTERNAL_MARKER = "⁣logbook-internal-summary-request⁣"
 # --------------------------------------------------------------------------- #
 def ensure_data():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
     if not BOARD_FILE.exists():
         save_board(DEFAULT_BOARD)
 
@@ -872,17 +870,8 @@ def log_for_date(day_str):
             cache[day_str] = {"entries": entries, "totals": totals}
             _save_day_log_cache()
 
-    note = ""
-    note_file = LOGS_DIR / f"{day_str}.md"
-    if note_file.exists():
-        try:
-            note = note_file.read_text(encoding="utf-8")
-        except Exception:
-            note = ""
-
     return {
         "date": day_str,
-        "note": note,
         "day_summary": day_summary_for(day_str, entries, is_past),
         "entries": entries,
         "totals": totals,

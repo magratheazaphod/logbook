@@ -33,7 +33,6 @@ logbook/
     favicon.ico
   data/
     board.json     # backlog + ideas (plain JSON — safe for an agent/cron to edit)
-    logs/          # optional data/logs/YYYY-MM-DD.md narrative per day
 ```
 
 ## How it works
@@ -58,23 +57,14 @@ logbook/
   `rsvg-convert` (the `.ico` is assembled in pure Python). Served from `/icons/`, with
   `/favicon.ico` and a `/manifest.webmanifest` that makes Chrome's "Install as app" produce a
   real Dock icon and a chromeless window.
-- **Narrative override**: if `data/logs/<date>.md` exists, it renders above that day's ledger
-  (supports `#` headings, `-` bullets, `**bold**`).
 - Server binds to `127.0.0.1` only; no outbound calls. Parser is defensive and skips transcript
   lines it doesn't recognize, so a Claude Code format change degrades gracefully.
 
-## Open next step
+## History
 
-Auto-write the daily narrative on a schedule. Cleanest approach pipes the server's own JSON into
-Claude Code headless mode and redirects stdout to the log file (needs the server running):
-
-```bash
-0 21 * * *  cd ~/projects/logbook && curl -s "http://localhost:8787/api/log?date=$(date +\%F)" \
-  | $(which claude) -p "Summarize these Claude Code sessions as 3-5 markdown bullets of what I worked on. Output only the bullets." \
-  > "data/logs/$(date +\%F).md" 2>> ~/logbook-cron.log
-```
-
-Cron gotchas: use the absolute path to `claude` (`which claude`); escape `%` as `\%`; cron may not
-inherit your `claude login` auth (set `ANTHROPIC_API_KEY` if it fails); grant `cron` Full Disk
-Access on macOS. Test the command by hand before scheduling. A `daily-summary.sh` wrapper would make
-this a single clean crontab line — not built yet.
+There was once a second, hand-written narrative: a `data/logs/<date>.md` file rendered in a pink
+panel above the ledger, plus a documented cron job to auto-write it. It predates version control
+(both it and the day summary are already present in the initial squashed commit), and it was
+removed in July 2026 — no such file was ever created in the repo's lifetime, and the LLM day
+summary had grown to cover the same job. Don't reintroduce a second narrative surface without a
+reason the day summary can't serve.
