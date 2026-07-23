@@ -1,3 +1,5 @@
+<img src="icons/icon-192.png" alt="" width="96" align="right">
+
 # Logbook
 
 A lightweight personal command deck: a **backlog**, a place for **higher-level ideas**, and a
@@ -8,13 +10,33 @@ No dependencies, no build step. Just Python 3 (already on your Mac) and one HTML
 ## Run it
 
 ```bash
-cd task-tracker
+cd logbook
 python3 server.py
 ```
 
 Then open **http://localhost:8787**.
 
-To stop, press `Ctrl+C` in the terminal.
+To stop, press `Ctrl+C` in the terminal. After editing `server.py`, `./restart.sh` stops the old
+process and relaunches cleanly — the front end is read fresh per request, so UI edits only need a
+browser reload.
+
+## Install it as an app
+
+In Chrome, use **Install as app** (the install button in the address bar, or ⋮ → Cast, Save and
+Share → Install page as app). Logbook then gets a real Dock icon and its own window with no
+browser chrome. On iOS, **Add to Home Screen** does the same.
+
+The icon — a log seen end-on, bespectacled, reading a book — is drawn in `icons/make-icons.py`,
+which renders every size the tab, the Dock, and a home-screen tile need. The `.svg` and `.png`
+files beside it are generated output: edit the script and re-run it, or your changes get
+overwritten.
+
+```bash
+python3 icons/make-icons.py    # needs rsvg-convert (brew install librsvg)
+```
+
+That's the one tool the project needs beyond Python, and only for redrawing the icon — the
+rendered files are committed, so running Logbook itself still requires nothing.
 
 ## The three panes
 
