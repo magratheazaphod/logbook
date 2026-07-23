@@ -59,12 +59,3 @@ logbook/
   real Dock icon and a chromeless window.
 - Server binds to `127.0.0.1` only; no outbound calls. Parser is defensive and skips transcript
   lines it doesn't recognize, so a Claude Code format change degrades gracefully.
-
-## History
-
-There was once a second, hand-written narrative: a `data/logs/<date>.md` file rendered in a pink
-panel above the ledger, plus a documented cron job to auto-write it. It predates version control
-(both it and the day summary are already present in the initial squashed commit), and it was
-removed in July 2026 — no such file was ever created in the repo's lifetime, and the LLM day
-summary had grown to cover the same job. Don't reintroduce a second narrative surface without a
-reason the day summary can't serve.
