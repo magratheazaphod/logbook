@@ -1,4 +1,6 @@
-<img src="icons/icon-192.png" alt="" width="96" align="right">
+<p align="center">
+  <img src="icons/icon-192.png" alt="" width="128">
+</p>
 
 # Logbook
 
