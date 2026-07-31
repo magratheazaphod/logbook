@@ -181,6 +181,9 @@ def save_board(data):
 # every request — untouched files are pure cache hits.
 _file_cache = {}
 
+# cwd -> enclosing repo root (or None). See git_root().
+_git_root_cache = {}
+
 
 def parse_ts(s):
     """Parse an ISO timestamp (Claude Code uses UTC 'Z') into local time."""
@@ -242,13 +245,42 @@ def encode_project_dir(cwd):
     return cwd.replace("/", "-")
 
 
+def git_root(path):
+    """Nearest ancestor of `path` (inclusive) that holds a .git entry, or None.
+
+    A session started in a subdirectory of a repo - `job-search/tracker` -
+    would otherwise be labelled by that subdirectory's name, hiding which
+    project the work belonged to. Cached: this runs for every session on
+    every log request, and the answer only changes when a repo is created
+    or moved."""
+    if path in _git_root_cache:
+        return _git_root_cache[path]
+    root = None
+    try:
+        p = Path(path)
+        if p.is_absolute():
+            for cand in [p, *p.parents]:
+                if cand == cand.parent:  # filesystem root - stop before /
+                    break
+                if (cand / ".git").exists():
+                    root = str(cand)
+                    break
+    except OSError:
+        root = None
+    _git_root_cache[path] = root
+    return root
+
+
 def canonical_project(path):
-    """Fold a worktree cwd back onto its parent repo, e.g.
-    /repo/.claude/worktrees/idempotent-flamingo -> /repo"""
+    """Fold a cwd onto the project it belongs to: a worktree back onto its
+    parent repo (/repo/.claude/worktrees/idempotent-flamingo -> /repo), and
+    a subdirectory back onto its repo root (/repo/sub -> /repo)."""
     if not path:
         return path
     idx = path.find(WORKTREE_MARKER)
-    return path[:idx] if idx != -1 else path
+    if idx != -1:
+        return path[:idx]
+    return git_root(path) or path
 
 
 def event_tokens(usage):
