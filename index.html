@@ -296,6 +296,16 @@
     padding:5px 10px;box-shadow:var(--shadow);opacity:0;transition:opacity .25s}
   .savenote.show{opacity:1}
   .savenote.stale{color:#8a4b1f;background:#f7ead9;border-color:#e8d3b3}
+  /* Sits above the save note so a save firing on the same click can't hide it. */
+  .undonote{position:fixed;bottom:44px;right:18px;display:flex;align-items:center;gap:10px;
+    font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--card);
+    border:1px solid var(--line);border-radius:7px;padding:5px 6px 5px 10px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s}
+  .undonote.show{opacity:1;pointer-events:auto}
+  .undonote .what{max-width:26ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .undonote button{font:inherit;color:var(--ink);background:none;border:1px solid var(--line);
+    border-radius:5px;padding:2px 8px;cursor:pointer}
+  .undonote button:hover{background:var(--paper)}
 </style>
 </head>
 <body>
@@ -360,6 +370,10 @@
   </div>
 </div>
 <div class="savenote" id="savenote">saved</div>
+<div class="undonote" id="undonote" role="status" aria-live="polite">
+  <span class="what" id="undotext"></span>
+  <button type="button" id="undobtn">Undo</button>
+</div>
 
 <script>
 "use strict";
@@ -381,7 +395,46 @@ function flashNote(msg, warn) {
   noteTimer = setTimeout(() => n.classList.remove("show"), warn ? 2600 : 900);
 }
 
+// ---- undo (one deletion, one short window) -----------------------------
+// Deliberately not an archive: a single slot that expires on its own, so an
+// accidental ✕ is recoverable for a few seconds and nothing accumulates.
+const UNDO_MS = 8000;
+let undoSlot = null;
+let undoTimer = null;
+
+function offerUndo(what, restore) {
+  undoSlot = restore;
+  $("#undotext").textContent = `Deleted “${what}”`;
+  $("#undonote").classList.add("show");
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(clearUndo, UNDO_MS);
+}
+
+function clearUndo() {
+  undoSlot = null;
+  clearTimeout(undoTimer);
+  $("#undonote").classList.remove("show");
+}
+
+// Delete an item from a registered list, offering to put it back where it was.
+function deleteItem(item, listId) {
+  const i = DND[listId].arr.findIndex(x => x.id === item.id);
+  if (i < 0) return;
+  DND[listId].arr.splice(i, 1);
+  DND[listId].onChange(); save();
+  offerUndo(item.title, () => {
+    // Re-read the list: a resync may have swapped the array since the delete.
+    const { arr, onChange } = DND[listId];
+    if (arr.some(x => x.id === item.id)) return;
+    arr.splice(Math.min(i, arr.length), 0, item);
+    onChange(); save();   // the row reappearing in place is the confirmation
+  });
+}
+
 function adoptBoard(fresh) {
+  // The board changed underneath us (409 or a focus resync) - the pending
+  // undo describes a board that no longer exists, so retire it.
+  clearUndo();
   board = fresh;
   board.tasks ||= []; board.ideas ||= []; board.dayPlans ||= {};
   renderTasks(); renderIdeas(); loadLog();
@@ -566,7 +619,7 @@ async function checkForMatchingIssue(item, arr, onChange) {
 }
 
 function taskRow(t, listId) {
-  const { arr, onChange } = DND[listId];
+  const { onChange } = DND[listId];
   const li = el("li", "row status-" + (t.status || "backlog"));
   li.dataset.id = t.id;
 
@@ -602,11 +655,7 @@ function taskRow(t, listId) {
 
   const del = el("button", "del"); del.textContent = "✕"; del.title = "Delete";
   del.setAttribute("aria-label", "Delete task");
-  del.onclick = () => {
-    const i = arr.findIndex(x => x.id === t.id);
-    if (i > -1) arr.splice(i, 1);
-    onChange(); save();
-  };
+  del.onclick = () => deleteItem(t, listId);
 
   li.append(grip, chip, body, del);
   return li;
@@ -625,7 +674,7 @@ function renderIdeas() {
 }
 
 function ideaRow(idea, listId) {
-  const { arr, onChange } = DND[listId];
+  const { onChange } = DND[listId];
   const li = el("li", "row status-" + (idea.status || "backlog"));
   li.dataset.id = idea.id;
   const grip = makeDraggable(li, idea.id, listId);
@@ -656,11 +705,7 @@ function ideaRow(idea, listId) {
   const issueRow = linkedIssueRow(idea, onChange);
   if (issueRow) body.appendChild(issueRow);
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
-  del.onclick = () => {
-    const i = arr.findIndex(x => x.id === idea.id);
-    if (i > -1) arr.splice(i, 1);
-    onChange(); save();
-  };
+  del.onclick = () => deleteItem(idea, listId);
   li.append(grip, chip, body, del);
   return li;
 }
@@ -996,6 +1041,12 @@ async function boot() {
   $("#datePick").addEventListener("change", e => {
     if (e.target.value) { logDate = new Date(e.target.value + "T12:00:00"); loadLog(); }
   });
+
+  $("#undobtn").onclick = () => {
+    const restore = undoSlot;
+    clearUndo();
+    if (restore) restore();
+  };
 
   window.addEventListener("focus", resyncIfChanged);
   document.addEventListener("visibilitychange", resyncIfChanged);
