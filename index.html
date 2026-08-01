@@ -534,12 +534,20 @@ function registerContainerDrop(container, listId) {
   });
 }
 
+// Backlog and Ideas share the same item shape (title/status/linkedIssue), so
+// a row can cross between them - that's how an idea gets promoted to a task
+// (or vice versa) without a separate "convert" action. Today's Focus columns
+// stay kind-locked since a day plan's tasks/ideas split is meant to mirror it.
+const CROSSABLE = new Set(["backlog", "ideas"]);
+
 function handleDrop(e, targetListId, targetId) {
   let payload;
   try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
   const fromId = payload && payload.id, fromListId = payload && payload.listId;
   const from = DND[fromListId], to = DND[targetListId];
-  if (!fromId || !from || !to || from.kind !== to.kind) return;
+  if (!fromId || !from || !to) return;
+  const kindOk = from.kind === to.kind || (CROSSABLE.has(fromListId) && CROSSABLE.has(targetListId));
+  if (!kindOk) return;
   const fromIdx = from.arr.findIndex(x => x.id === fromId);
   if (fromIdx === -1) return;
   if (fromListId === targetListId && fromId === targetId) return;
