@@ -36,6 +36,22 @@
     font-family:var(--sans);font-size:15px;line-height:1.5;
     -webkit-font-smoothing:antialiased;
   }
+  /* Dev mode -------------------------------------------------------------- */
+  /* Set on <body> by script when the port isn't the default 8787, so a dev
+     instance never gets mistaken for the real board at a glance. */
+  body.dev{
+    --paper:#FCF3D9;--card:#FFFCF1;--line:#E8DCA8;--line-strong:#D9C978;
+  }
+  body.dev::before{
+    content:"";position:fixed;top:0;left:0;right:0;height:5px;z-index:20;
+    background:repeating-linear-gradient(-45deg,#E0A800,#E0A800 12px,#1B1D1E 12px,#1B1D1E 24px);
+  }
+  .dev-badge{
+    display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+    font-size:11px;font-weight:700;letter-spacing:.06em;color:#5C4400;
+    background:#F6D763;border:1px solid #C9A227;border-radius:5px;
+    padding:2px 7px;vertical-align:middle;
+  }
   .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
 
   /* Header ---------------------------------------------------------------- */
@@ -323,6 +339,7 @@
       <span class="mark" aria-hidden="true"></span>
       <h1>Logbook</h1>
       <span class="tag">backlog · ideas · daily log</span>
+      <span class="dev-badge" id="devBadge" hidden title="Running on a non-default port - not the instance with your real board">DEV</span>
     </div>
     <div class="today" id="todayStamp"></div>
   </header>
@@ -392,6 +409,17 @@ const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':
 let board = { tasks: [], ideas: [] };
 const STATUSES = ["backlog", "doing", "done"];
 const STATUS_LABEL = { backlog: "todo", doing: "doing", done: "done" };
+
+// ---- dev-mode indicator -------------------------------------------------
+// Any port other than the default 8787 means this isn't the everyday
+// instance (a scratch/demo copy, a debugging session, etc) - flag it hard
+// so it's never mistaken for the board with your real data.
+if (location.port && location.port !== "8787") {
+  document.body.classList.add("dev");
+  $("#devBadge").hidden = false;
+  $("#devBadge").textContent = `DEV · :${location.port}`;
+  document.title = `Logbook (dev :${location.port})`;
+}
 
 // ---- persistence -------------------------------------------------------
 let saveTimer = null;
