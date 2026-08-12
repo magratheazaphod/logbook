@@ -34,6 +34,9 @@ BOARD_BACKUP_DIR = DATA_DIR / "backups"
 BOARD_BACKUP_KEEP = 60
 INDEX_FILE = ROOT / "index.html"
 ICONS_DIR = ROOT / "icons"
+HANDOFF_DIR = DATA_DIR / "handoffs"
+HANDOFF_INDEX_FILE = HANDOFF_DIR / "index.json"
+HANDOFF_MAX_BYTES = 2_000_000
 SUMMARY_CACHE_FILE = DATA_DIR / "session_summaries.json"
 DAY_LOG_CACHE_FILE = DATA_DIR / "day_log_cache.json"
 DAY_SUMMARY_FILE = DATA_DIR / "day_summaries.json"
@@ -959,6 +962,85 @@ def _compute_day(target):
 
 
 # --------------------------------------------------------------------------- #
+# Handoff docs attached to a backlog task / idea
+# --------------------------------------------------------------------------- #
+# A handoff doc gets dragged onto a card straight from Finder or an editor. The
+# browser hands us the file's text, and (when the drag carried a file:// URL)
+# its real path on disk. We keep both: the path so the card keeps tracking the
+# living document as it's edited, and a snapshot so the link still opens
+# something after the original is moved, renamed, or deleted.
+#
+# The board only ever stores an id — the path lives in this server-side index,
+# so /api/handoff can never be talked into reading an arbitrary file.
+
+
+def _load_handoff_index():
+    try:
+        return json.loads(HANDOFF_INDEX_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_handoff_index(idx):
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = HANDOFF_INDEX_FILE.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(idx, f, indent=2)
+    os.replace(tmp, HANDOFF_INDEX_FILE)
+
+
+def add_handoff(name, path, text):
+    """Snapshot a dropped doc and return the record the board should store."""
+    name = (name or "handoff.md").strip() or "handoff.md"
+    text = text or ""
+    if len(text.encode("utf-8")) > HANDOFF_MAX_BYTES:
+        raise ValueError("file too large")
+    path = (path or "").strip()
+    if path:
+        # Only keep a path we could actually read back later.
+        try:
+            if not Path(path).is_file():
+                path = ""
+        except Exception:
+            path = ""
+
+    hid = uuid.uuid4().hex[:12]
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    (HANDOFF_DIR / f"{hid}.md").write_text(text, encoding="utf-8")
+
+    rec = {"id": hid, "name": name, "path": path,
+           "added": datetime.now().astimezone().isoformat(timespec="seconds")}
+    idx = _load_handoff_index()
+    idx[hid] = rec
+    _save_handoff_index(idx)
+    return {"id": hid, "name": name, "added": rec["added"]}
+
+
+def read_handoff(hid):
+    rec = _load_handoff_index().get(str(hid or ""))
+    if not rec:
+        return None
+    live = ""
+    if rec.get("path"):
+        try:
+            p = Path(rec["path"])
+            if p.is_file() and p.stat().st_size <= HANDOFF_MAX_BYTES:
+                live = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            live = ""
+    if live:
+        return {"id": rec["id"], "name": rec["name"], "path": rec["path"],
+                "added": rec.get("added", ""), "source": "live", "text": live}
+    try:
+        snap = (HANDOFF_DIR / f"{rec['id']}.md").read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        snap = ""
+    return {"id": rec["id"], "name": rec["name"], "path": rec.get("path", ""),
+            "added": rec.get("added", ""),
+            "source": "snapshot" if rec.get("path") else "saved", "text": snap}
+
+
+# --------------------------------------------------------------------------- #
 # HTTP
 # --------------------------------------------------------------------------- #
 class Handler(BaseHTTPRequestHandler):
@@ -1027,6 +1109,13 @@ class Handler(BaseHTTPRequestHandler):
                 }, "application/manifest+json")
             elif path == "/api/board":
                 self._send(200, load_board())
+            elif path == "/api/handoff":
+                q = parse_qs(parsed.query)
+                doc = read_handoff(q.get("id", [""])[0])
+                if doc is None:
+                    self._send(404, {"error": "no such handoff"})
+                else:
+                    self._send(200, doc)
             elif path == "/api/log/dates":
                 self._send(200, {"dates": available_dates()})
             elif path == "/api/log":
@@ -1084,6 +1173,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("missing date")
                 text = regenerate_day_summary(day)
                 self._send(200, {"text": text})
+            except Exception as e:
+                self._send(400, {"error": str(e)})
+        elif parsed.path == "/api/handoff":
+            try:
+                self._send(200, add_handoff(data.get("name"), data.get("path"),
+                                            data.get("text")))
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/match-issue":

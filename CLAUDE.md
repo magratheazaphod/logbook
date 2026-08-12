@@ -33,6 +33,7 @@ logbook/
     favicon.ico
   data/
     board.json     # backlog + ideas (plain JSON — safe for an agent/cron to edit)
+    handoffs/      # snapshots of docs attached to a card, + index.json (path map)
 ```
 
 ## How it works
@@ -46,6 +47,16 @@ logbook/
   The UI also resyncs whenever its tab regains focus. Server bumps `rev` on every write.
 - **Backups**: before the first board write of each day, the server snapshots the previous
   state to `data/backups/board-YYYY-MM-DD.json` (kept 60 days, gitignored).
+- **Handoff docs**: drag a `.md` (or any text file) from Finder/an editor onto a Backlog or
+  Ideas card and it attaches as a removable pill; clicking it opens the doc in an overlay,
+  rendered by a small hand-rolled Markdown subset in Logbook's own styling. `POST /api/handoff`
+  snapshots the text to `data/handoffs/<id>.md` and records the file's real path (taken from the
+  drag's `text/uri-list`) in `data/handoffs/index.json`; `GET /api/handoff?id=` re-reads the live
+  file so later edits show through, falling back to the snapshot once the original moves or is
+  deleted. The board stores only the id, so the endpoint can't be pointed at an arbitrary file.
+  The current day's Focus rows take drops too; since a day plan stores whole *copies* of an
+  item, an attach/detach on either copy is written to both (`syncHandoffs`). Past days render
+  read-only and are excluded.
 - **Daily log**: `GET /api/log?date=YYYY-MM-DD` reads `~/.claude/projects/**/*.jsonl`, groups that
   day's sessions, and returns start/end times, project, git branch, prompt counts, and a title
   (Claude Code's own session summary, falling back to the first user prompt). Rendered as a ledger.

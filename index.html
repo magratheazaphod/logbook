@@ -97,12 +97,24 @@
   }
   .resizer:hover::after,.resizer.dragging::after{background:var(--accent);width:3px}
   body.resizing{cursor:col-resize;user-select:none}
+  /* One column: the day comes first. Below this width the two columns
+     dissolve (display:contents) so their children become items of one flex
+     column, which is the only way to get the date nav, the day's summary and
+     Today's Focus above the backlog while leaving the ledger below it. */
   @media (max-width:880px){
-    .grid{flex-direction:column;gap:44px}
+    .grid{flex-direction:column;gap:0;align-items:stretch}
+    .board-col,.log-col,#logOut{display:contents}
     .board-col{flex-basis:auto!important;width:100%;padding-right:0;
       position:static;max-height:none;overflow:visible}
-    .log-col{padding-left:0}
     .resizer{display:none}
+    .log-col>.col-head{order:1}
+    .logbar{order:2;margin-bottom:14px}
+    .daystamp{order:3}
+    .day-summary-row{order:4}
+    #todayFocus{order:5;margin-bottom:38px}
+    .board-col>*{order:6}
+    #logOut>.warn,#logOut>.summline,#logOut>.ledger,#logOut>.log-empty{order:7}
+    #logOut>.summline{margin-top:0}
   }
 
   .col-head{
@@ -188,6 +200,79 @@
     line-height:1;padding:2px 3px;border-radius:5px;
   }
   .issue-unlink:hover{color:var(--accent);background:var(--accent-soft)}
+
+  /* Handoff docs dragged onto a card ------------------------------------- */
+  .handoff-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+  .handoff-item{display:inline-flex;align-items:center;gap:2px;max-width:100%}
+  .handoff-pill{
+    display:inline-flex;align-items:center;gap:5px;
+    font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
+    background:var(--card);color:var(--muted);border:1px solid var(--line-strong);
+    cursor:pointer;max-width:100%;
+  }
+  .handoff-pill::before{content:"❧";color:var(--accent);opacity:.8}
+  .handoff-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .handoff-pill:hover{border-color:var(--accent);color:var(--accent-ink)}
+  li.row.file-over{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft)}
+  /* While a file is being dragged over the window, say where it can land —
+     a card gives no hint on its own that it would accept one. */
+  body.file-dragging .list{
+    outline:2px dashed var(--line-strong);outline-offset:6px;border-radius:8px;
+  }
+  body.file-dragging .list li.row{background:var(--card)}
+  body.file-dragging::after{
+    content:"Drop onto a backlog or idea card to attach it as a handoff";
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:70;
+    font-family:var(--mono);font-size:12px;color:var(--card);
+    background:var(--accent-ink);padding:7px 14px;border-radius:999px;
+    box-shadow:0 4px 14px rgba(20,20,20,.28);pointer-events:none;white-space:nowrap;
+  }
+
+  /* Handoff overlay ------------------------------------------------------- */
+  .doc-overlay{
+    position:fixed;inset:0;z-index:60;background:rgba(27,29,30,.42);
+    display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;
+  }
+  .doc-sheet{
+    background:var(--card);border:1px solid var(--line-strong);border-radius:var(--radius);
+    box-shadow:0 10px 40px rgba(20,20,20,.25);width:min(760px,100%);
+    max-height:100%;display:flex;flex-direction:column;overflow:hidden;
+  }
+  .doc-head{
+    display:flex;align-items:baseline;gap:10px;padding:14px 20px;
+    border-bottom:1px solid var(--line);background:var(--paper);
+  }
+  .doc-head h3{margin:0;font-size:15px;font-family:var(--mono);font-weight:600;flex:1;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc-head .meta{font-size:11px;color:var(--faint);font-family:var(--mono);flex:none}
+  .doc-close{border:0;background:none;color:var(--muted);cursor:pointer;font-size:16px;
+    line-height:1;padding:3px 6px;border-radius:6px;flex:none}
+  .doc-close:hover{color:var(--accent);background:var(--accent-soft)}
+  .doc-body{padding:20px 24px 28px;overflow:auto}
+  .doc-body>*:first-child{margin-top:0}
+  .doc-body h1,.doc-body h2,.doc-body h3,.doc-body h4{
+    font-family:var(--mono);font-weight:600;line-height:1.3;margin:1.4em 0 .5em;
+  }
+  .doc-body h1{font-size:19px;color:var(--accent-ink);
+    border-bottom:1px solid var(--line);padding-bottom:.3em}
+  .doc-body h2{font-size:16px;color:var(--accent-ink)}
+  .doc-body h3{font-size:14px}
+  .doc-body h4{font-size:13px;color:var(--muted)}
+  .doc-body p,.doc-body ul,.doc-body ol{margin:.7em 0}
+  .doc-body li{margin:.25em 0}
+  .doc-body a{color:var(--accent-ink)}
+  .doc-body code{font-family:var(--mono);font-size:12.5px;background:var(--accent-soft);
+    padding:1px 5px;border-radius:4px}
+  .doc-body pre{background:var(--paper);border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;overflow:auto}
+  .doc-body pre code{background:none;padding:0;font-size:12.5px;line-height:1.5}
+  .doc-body blockquote{margin:.8em 0;padding:.1em 0 .1em 14px;color:var(--muted);
+    border-left:3px solid var(--line-strong)}
+  .doc-body hr{border:0;border-top:1px solid var(--line);margin:1.5em 0}
+  .doc-body table{border-collapse:collapse;font-size:13px;margin:.8em 0;width:100%}
+  .doc-body th,.doc-body td{border:1px solid var(--line);padding:5px 9px;text-align:left}
+  .doc-body th{background:var(--paper);font-family:var(--mono);font-weight:600;font-size:12px}
+  .doc-body .task-box{color:var(--accent);font-family:var(--mono)}
   .status-done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
   .row .del{
     flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
@@ -201,7 +286,7 @@
 
   /* today's focus — drag tasks/ideas here to work them today ------------- */
   .today-focus{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 0 20px}
-  @media (max-width:640px){.today-focus{grid-template-columns:1fr}}
+  @media (max-width:820px){.today-focus{grid-template-columns:1fr}}
   .tf-col{min-width:0}
   .tf-head{
     font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;
@@ -535,6 +620,8 @@ function makeDraggable(li, id, listId) {
     e.dataTransfer.setData("text/plain", JSON.stringify({ id, listId }));
   });
   grip.addEventListener("dragend", () => li.classList.remove("dragging"));
+  // File drags are handled by initFileDrop() at the document level, not here —
+  // see the note there.
   li.addEventListener("dragover", e => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
@@ -592,7 +679,8 @@ function handleDrop(e, targetListId, targetId) {
 // ---- search filter -----------------------------------------------------
 // Hides non-matching backlog/idea rows in place (rather than re-rendering a
 // filtered list) so drag indices and row identity are untouched. Matches on
-// the visible title plus any linked-issue pill text.
+// the visible title, any linked-issue pill text, and any attached handoff
+// filenames.
 let searchQuery = "";
 function applyBoardFilter() {
   const q = searchQuery.trim().toLowerCase();
@@ -604,7 +692,9 @@ function applyBoardFilter() {
     for (const li of rows) {
       const title = li.querySelector(".title")?.textContent || "";
       const issue = li.querySelector(".issue-link")?.textContent || "";
-      const match = !q || (title + " " + issue).toLowerCase().includes(q);
+      const docs = Array.from(li.querySelectorAll(".handoff-pill"))
+        .map(p => p.textContent).join(" ");
+      const match = !q || (title + " " + issue + " " + docs).toLowerCase().includes(q);
       li.classList.toggle("filtered-out", !match);
       if (match) shown++;
     }
@@ -646,6 +736,313 @@ function linkedIssueRow(item, onChange) {
   unlink.onclick = e => { e.stopPropagation(); delete item.linkedIssue; onChange(); save(); };
   row.append(link, unlink);
   return row;
+}
+
+// ---- handoff docs --------------------------------------------------------
+// Drag a handoff .md onto a backlog/idea card and it sticks to that item, so
+// past attempts at the same piece of work stay findable. The card keeps only
+// an id; the server holds the path and a snapshot of the text.
+
+function handoffRow(item, onChange) {
+  if (!item.handoffs?.length) return null;
+  const row = el("div", "handoff-row");
+  for (const h of item.handoffs) {
+    const pill = el("button", "handoff-pill");
+    const name = el("span"); name.textContent = h.name;
+    pill.appendChild(name);
+    pill.title = `Open ${h.name}${h.added ? " — attached " + h.added.slice(0, 10) : ""}`;
+    pill.onclick = e => { e.stopPropagation(); openHandoff(h); };
+    const unlink = el("button", "issue-unlink"); unlink.textContent = "✕";
+    unlink.title = "Detach this handoff";
+    unlink.setAttribute("aria-label", "Detach handoff");
+    unlink.onclick = e => {
+      e.stopPropagation();
+      item.handoffs = item.handoffs.filter(x => x.id !== h.id);
+      if (!item.handoffs.length) delete item.handoffs;
+      syncHandoffs(item);
+      refreshAfterHandoff();
+      save();
+    };
+    const group = el("span", "handoff-item");
+    group.append(pill, unlink);   // the ✕ must never wrap away from its pill
+    row.appendChild(group);
+  }
+  return row;
+}
+
+// Files dropped onto a row (rather than another card being reordered onto it).
+// `files`/`uris` must be read off the event synchronously by the caller — a
+// DataTransfer is dead the moment the drop handler returns.
+async function attachHandoffFiles(item, files, uris) {
+  let added = 0;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    try {
+      const text = await f.text();
+      // Finder and most editors also put a file:// URL on the drag, which is
+      // the only way a browser will tell us where the file actually lives.
+      const uri = uris[i] || (uris.length === 1 ? uris[0] : "");
+      const path = uri ? decodeURI(uri.replace(/^file:\/\//, "")) : "";
+      const r = await fetch("/api/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: f.name, path, text }),
+      });
+      if (!r.ok) throw new Error("save failed");
+      const rec = await r.json();
+      (item.handoffs ||= []).push(rec);
+      added++;
+    } catch (err) { flashNote(`couldn't attach ${f.name}`, true); }
+  }
+  if (added) {
+    item.updated = new Date().toISOString();
+    syncHandoffs(item);
+    refreshAfterHandoff();
+    save();
+    flashNote(added === 1 ? `attached ${files[0].name}` : `attached ${added} docs`);
+  }
+}
+
+// A card sitting in Today's Focus is a separate copy of the same item, not a
+// reference to it — the day plan stores whole objects. So an attachment made
+// on either copy is written to both, and a detach likewise; otherwise the doc
+// would appear on today's copy and be lost the moment it rolls back over.
+function twinsOf(id) {
+  const twins = [];
+  for (const arr of [board.tasks, board.ideas]) {
+    for (const x of arr || []) if (x.id === id) twins.push(x);
+  }
+  const plan = board.dayPlans?.[todayKey()];
+  for (const key of ["tasks", "ideas"]) {
+    for (const x of (plan?.[key]) || []) if (x.id === id) twins.push(x);
+  }
+  return twins;
+}
+
+function syncHandoffs(item) {
+  for (const twin of twinsOf(item.id)) {
+    if (twin === item) continue;
+    if (item.handoffs?.length) twin.handoffs = item.handoffs.map(h => ({ ...h }));
+    else delete twin.handoffs;
+  }
+}
+
+// Both places a card can appear have to redraw, wherever the drop landed.
+function refreshAfterHandoff() {
+  renderTasks(); renderIdeas();
+  const tf = $("#todayFocus");
+  if (tf?.querySelector("ul[data-list-id]")) renderTodayFocus(tf, todayKey());
+}
+
+// A dragged-in file is handled once, at the document level, in the capture
+// phase. Per-row listeners proved unreliable: the card title is
+// contentEditable, which swallows file drags in Chrome, and a drag crossing
+// between a row's children flickers dragenter/dragleave. Here the row under
+// the cursor is looked up by coordinates instead, so nothing in between can
+// interfere. While a file is over the window the whole board says where to
+// aim, since a bare row gives no hint that it would take a drop at all.
+function initFileDrop() {
+  const isFiles = e => Array.from(e.dataTransfer?.types || []).includes("Files");
+  let hot = null;
+  const clear = () => {
+    document.body.classList.remove("file-dragging");
+    if (hot) { hot.classList.remove("file-over"); hot = null; }
+  };
+  // The card is found by plain geometry — walking the rows and comparing
+  // rectangles against the pointer. Asking the DOM what's under the cursor
+  // (elementFromPoint, or the event's own target) is what failed here: a file
+  // drag over the board reports something the row lookup can't climb out of.
+  // A rectangle comparison has nothing in between to get in the way, and the
+  // slop lets a drop land in the gap between two cards.
+  //
+  // Backlog, Ideas, and the current day's focus columns all take drops. A
+  // focus row is a *copy* of its card, so attaching there writes to both (see
+  // attachHandoffFiles). Past days render read-only rows and carry no
+  // data-list-id, which keeps them out of this scan.
+  const dropLists = () => {
+    const out = [[$("#taskList"), "backlog"], [$("#ideaList"), "ideas"]];
+    for (const ul of document.querySelectorAll("#todayFocus ul[data-list-id]")) {
+      out.push([ul, ul.dataset.listId]);
+    }
+    return out;
+  };
+  const targetUnder = e => {
+    const x = e.clientX, y = e.clientY;
+    let best = null, bestGap = 22;
+    for (const [ul, listId] of dropLists()) {
+      if (!ul) continue;
+      for (const li of ul.querySelectorAll("li.row")) {
+        if (li.classList.contains("filtered-out")) continue;
+        const r = li.getBoundingClientRect();
+        if (x < r.left - 10 || x > r.right + 10) continue;
+        const gap = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+        if (gap < bestGap) { best = { li, listId, id: li.dataset.id }; bestGap = gap; }
+      }
+    }
+    return best;
+  };
+
+  document.addEventListener("dragover", e => {
+    if (!isFiles(e)) return;
+    e.preventDefault();          // without this the browser refuses the drop
+    e.stopPropagation();
+    document.body.classList.add("file-dragging");
+    const hit = targetUnder(e);
+    e.dataTransfer.dropEffect = hit ? "copy" : "none";
+    if (hot && hot !== hit?.li) hot.classList.remove("file-over");
+    hot = hit?.li || null;
+    if (hot) hot.classList.add("file-over");
+  }, true);
+
+  // relatedTarget is null only when the pointer leaves the window entirely.
+  document.addEventListener("dragleave", e => { if (!e.relatedTarget) clear(); }, true);
+  document.addEventListener("dragend", clear, true);
+
+  document.addEventListener("drop", e => {
+    if (!isFiles(e)) return;
+    e.preventDefault();          // else the browser navigates to the file
+    e.stopPropagation();
+    const hit = targetUnder(e);
+    clear();
+    if (!hit) { flashNote("drop a doc onto a backlog or idea card", true); return; }
+    const item = DND[hit.listId]?.arr.find(x => x.id === hit.id);
+    // Both must be read now — a DataTransfer is dead once this handler returns.
+    const files = Array.from(e.dataTransfer.files);
+    const uris = (e.dataTransfer.getData("text/uri-list") || "")
+      .split(/\r?\n/).filter(u => u.startsWith("file://"));
+    if (item && files.length) attachHandoffFiles(item, files, uris);
+  }, true);
+}
+
+function openHandoff(h) {
+  const overlay = el("div", "doc-overlay");
+  const sheet = el("div", "doc-sheet");
+  const head = el("div", "doc-head");
+  const title = document.createElement("h3"); title.textContent = h.name;
+  const meta = el("span", "meta");
+  const close = el("button", "doc-close"); close.textContent = "✕";
+  close.setAttribute("aria-label", "Close");
+  head.append(title, meta, close);
+  const body = el("div", "doc-body");
+  body.textContent = "Loading…";
+  sheet.append(head, body);
+  overlay.appendChild(sheet);
+
+  const dismiss = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = ev => { if (ev.key === "Escape") dismiss(); };
+  close.onclick = dismiss;
+  overlay.onclick = ev => { if (ev.target === overlay) dismiss(); };
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+
+  fetch("/api/handoff?id=" + encodeURIComponent(h.id))
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(doc => {
+      meta.textContent = doc.source === "snapshot" ? "snapshot — original file is gone"
+        : doc.source === "live" ? "live file" : "saved copy";
+      meta.title = doc.path || "";
+      body.innerHTML = renderMarkdown(doc.text || "");
+      for (const a of body.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener"; }
+    })
+    .catch(() => { body.textContent = "Couldn't read this handoff."; });
+}
+
+// A small Markdown subset, enough for handoff docs — headings, lists (incl.
+// checkboxes), fenced code, quotes, rules, pipe tables, and inline marks.
+// Deliberately hand-rolled: this project stays dependency-free.
+function renderMarkdown(src) {
+  const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const codes = [];
+  let text = src.replace(/\r\n/g, "\n").replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    codes.push(`<pre><code>${esc(code.replace(/\n$/, ""))}</code></pre>`);
+    return ` CODE${codes.length - 1} `;
+  });
+
+  const inline = s => {
+    const spans = [];
+    s = esc(s).replace(/`([^`]+)`/g, (_, c) => {
+      spans.push(`<code>${c}</code>`); return ` IC${spans.length - 1} `;
+    });
+    // Only linkify schemes that are safe to click straight out of a doc
+    // someone else's agent wrote — no javascript:/data: URLs.
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) =>
+          /^(https?:|mailto:|#|\/|\.)/i.test(href) ? `<a href="${href}">${label}</a>` : m)
+         .replace(/(^|\W)\*\*([^*]+)\*\*/g, "$1<strong>$2</strong>")
+         .replace(/(^|\W)__([^_]+)__/g, "$1<strong>$2</strong>")
+         .replace(/(^|\W)\*([^*\n]+)\*/g, "$1<em>$2</em>")
+         .replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    return s.replace(/ IC(\d+) /g, (_, i) => spans[i]);
+  };
+
+  const out = [];
+  const lines = text.split("\n");
+  let i = 0, para = [];
+  const flushPara = () => {
+    if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
+  };
+  while (i < lines.length) {
+    const line = lines[i];
+    const codeRef = line.match(/^ CODE(\d+) $/);
+    if (codeRef) { flushPara(); out.push(codes[+codeRef[1]]); i++; continue; }
+    if (!line.trim()) { flushPara(); i++; continue; }
+    if (/^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flushPara(); out.push("<hr>"); i++; continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      flushPara();
+      const lvl = Math.min(h[1].length, 4);
+      out.push(`<h${lvl}>${inline(h[2].trim())}</h${lvl}>`); i++; continue;
+    }
+    if (/^\s*>/.test(line)) {
+      flushPara();
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push(`<blockquote>${renderMarkdown(buf.join("\n"))}</blockquote>`);
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1] || "")) {
+      flushPara();
+      const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => inline(c.trim()));
+      const head = cells(lines[i]); i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push("<table><thead><tr>" + head.map(c => `<th>${c}</th>`).join("") +
+        "</tr></thead><tbody>" +
+        rows.map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>").join("") +
+        "</tbody></table>");
+      continue;
+    }
+    const bullet = /^\s*([-*+]|\d+[.)])\s+/;
+    if (bullet.test(line)) {
+      flushPara();
+      const ordered = /^\s*\d/.test(line);
+      const items = [];
+      // Stop the run where the marker style flips, so a numbered list that
+      // follows a bulleted one doesn't get swallowed into it.
+      while (i < lines.length && bullet.test(lines[i]) &&
+             /^\s*\d/.test(lines[i]) === ordered) {
+        let body = lines[i++].replace(bullet, "");
+        const box = body.match(/^\[( |x|X)\]\s*(.*)$/);
+        body = box
+          ? `<span class="task-box">${box[1] === " " ? "☐" : "☑"}</span> ${inline(box[2])}`
+          : inline(body);
+        // A wrapped continuation line belongs to the item above it.
+        while (i < lines.length && lines[i].trim() && !bullet.test(lines[i]) &&
+               !/^(#{1,6}\s|\s*>| CODE)/.test(lines[i])) {
+          body += " " + inline(lines[i++].trim());
+        }
+        items.push(`<li>${body}</li>`);
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.join("")}</${tag}>`);
+      continue;
+    }
+    para.push(line.trim()); i++;
+  }
+  flushPara();
+  return out.join("\n");
 }
 
 async function checkForMatchingIssue(item, arr, onChange) {
@@ -697,6 +1094,8 @@ function taskRow(t, listId) {
   body.appendChild(title);
   const issueRow = linkedIssueRow(t, onChange);
   if (issueRow) body.appendChild(issueRow);
+  const hoRow = handoffRow(t, onChange);
+  if (hoRow) body.appendChild(hoRow);
 
   const del = el("button", "del"); del.textContent = "✕"; del.title = "Delete";
   del.setAttribute("aria-label", "Delete task");
@@ -749,6 +1148,8 @@ function ideaRow(idea, listId) {
   body.appendChild(title);
   const issueRow = linkedIssueRow(idea, onChange);
   if (issueRow) body.appendChild(issueRow);
+  const hoRow = handoffRow(idea, onChange);
+  if (hoRow) body.appendChild(hoRow);
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
   del.onclick = () => deleteItem(idea, listId);
   li.append(grip, chip, body, del);
@@ -806,6 +1207,7 @@ function focusColumn(label, kind, dateKey, isToday, plan) {
     board.dayPlans[dateKey] ||= { tasks: [], ideas: [] };
     const arr = board.dayPlans[dateKey][key];
     const listId = "today-" + key;
+    list.dataset.listId = listId;   // marks it a live drop target for handoffs
     registerList(listId, arr, () => renderTodayFocus($("#todayFocus"), dateKey), kind);
     registerContainerDrop(list, listId);
     if (!arr.length) {
@@ -1093,6 +1495,7 @@ async function boot() {
     if (restore) restore();
   };
 
+  initFileDrop();
   window.addEventListener("focus", resyncIfChanged);
   document.addEventListener("visibilitychange", resyncIfChanged);
 
