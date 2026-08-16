@@ -162,6 +162,7 @@
   /* Task / idea rows ------------------------------------------------------ */
   ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
   li.row{
+    position:relative;
     display:flex;align-items:flex-start;gap:11px;
     background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:11px 12px;box-shadow:var(--shadow);
@@ -281,12 +282,16 @@
   li.row:hover .del,li.row:focus-within .del{opacity:1}
   .row .del:hover{color:var(--accent);background:var(--accent-soft)}
   /* Only shown on hover, and only when the card isn't already first - jumps
-     it to the top of its list without having to drag all the way there. */
+     it to the top of its list without having to drag all the way there.
+     Sits outside the card, in the same right-hand gutter the resizer lives
+     in, so it never eats into the card's own width (a flex child here once
+     squished every title to wrap a line earlier). */
   .row .to-top{
-    flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
-    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.06em;
-    line-height:1;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .12s;
-    white-space:nowrap;align-self:center;
+    position:absolute;top:34px;left:100%;margin-left:2px;
+    border:0;background:none;color:var(--faint);cursor:pointer;
+    font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.03em;
+    line-height:1;padding:3px 3px;border-radius:5px;opacity:0;transition:opacity .12s;
+    white-space:nowrap;
   }
   li.row:hover .to-top,li.row:focus-within .to-top{opacity:1}
   .row .to-top:hover{color:var(--accent);background:var(--accent-soft)}
@@ -1070,8 +1075,12 @@ async function checkForMatchingIssue(item, arr, onChange) {
   } catch (e) { /* best-effort, no gh/claude available or network error */ }
 }
 
-// Moves an item to index 0 of its list, unless it's already there.
+// Moves an item to index 0 of its list, unless it's already there. Backlog
+// and Ideas only - a card sitting in Today's Focus has nowhere further to
+// climb that would mean anything (that list is short, and there's no
+// "further up" for it to unblock a scroll from).
 function toTopButton(item, listId) {
+  if (!CROSSABLE.has(listId)) return null;
   const { arr, onChange } = DND[listId];
   if (arr[0] === item) return null;
   const btn = el("button", "to-top"); btn.type = "button"; btn.textContent = "TOP";
