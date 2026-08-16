@@ -280,6 +280,16 @@
   }
   li.row:hover .del,li.row:focus-within .del{opacity:1}
   .row .del:hover{color:var(--accent);background:var(--accent-soft)}
+  /* Only shown on hover, and only when the card isn't already first - jumps
+     it to the top of its list without having to drag all the way there. */
+  .row .to-top{
+    flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
+    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.06em;
+    line-height:1;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .12s;
+    white-space:nowrap;align-self:center;
+  }
+  li.row:hover .to-top,li.row:focus-within .to-top{opacity:1}
+  .row .to-top:hover{color:var(--accent);background:var(--accent-soft)}
   .title[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 
   .empty{color:var(--faint);font-size:13.5px;padding:14px 2px;font-style:italic}
@@ -1060,6 +1070,23 @@ async function checkForMatchingIssue(item, arr, onChange) {
   } catch (e) { /* best-effort, no gh/claude available or network error */ }
 }
 
+// Moves an item to index 0 of its list, unless it's already there.
+function toTopButton(item, listId) {
+  const { arr, onChange } = DND[listId];
+  if (arr[0] === item) return null;
+  const btn = el("button", "to-top"); btn.type = "button"; btn.textContent = "TOP";
+  btn.title = "Move to top"; btn.setAttribute("aria-label", "Move to top");
+  btn.onclick = e => {
+    e.stopPropagation();
+    const i = arr.findIndex(x => x.id === item.id);
+    if (i <= 0) return;
+    const [moved] = arr.splice(i, 1);
+    arr.unshift(moved);
+    onChange(); save();
+  };
+  return btn;
+}
+
 function taskRow(t, listId) {
   const { onChange } = DND[listId];
   const li = el("li", "row status-" + (t.status || "backlog"));
@@ -1101,7 +1128,8 @@ function taskRow(t, listId) {
   del.setAttribute("aria-label", "Delete task");
   del.onclick = () => deleteItem(t, listId);
 
-  li.append(grip, chip, body, del);
+  const top = toTopButton(t, listId);
+  li.append(grip, chip, body, ...(top ? [top] : []), del);
   return li;
 }
 
@@ -1152,7 +1180,8 @@ function ideaRow(idea, listId) {
   if (hoRow) body.appendChild(hoRow);
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
   del.onclick = () => deleteItem(idea, listId);
-  li.append(grip, chip, body, del);
+  const top = toTopButton(idea, listId);
+  li.append(grip, chip, body, ...(top ? [top] : []), del);
   return li;
 }
 
