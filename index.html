@@ -296,6 +296,9 @@
   }
   li.row:hover .to-top,li.row:focus-within .to-top{opacity:1}
   .row .to-top:hover{color:var(--accent);background:var(--accent-soft)}
+  /* A one-line card is too short to stack TOP under the X without it
+     spilling past the bottom edge - sit it beside the X instead. */
+  li.row.one-line .to-top{top:11px;right:34px}
   .title[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 
   .empty{color:var(--faint);font-size:13.5px;padding:14px 2px;font-style:italic}
@@ -725,6 +728,17 @@ function applyBoardFilter() {
 }
 
 // ---- board rendering ---------------------------------------------------
+// A one-line title leaves the card too short for the TOP tag to stack under
+// the delete button without spilling past the card's bottom edge - flag
+// those rows so the CSS can tuck TOP beside the X instead. Has to run after
+// the rows are in the DOM, since wrapping depends on layout.
+function markOneLineRows(list) {
+  for (const li of list.querySelectorAll("li.row")) {
+    const title = li.querySelector(".title");
+    if (title) li.classList.toggle("one-line", title.offsetHeight <= 24);
+  }
+}
+
 function renderTasks() {
   registerList("backlog", board.tasks, renderTasks, "task");
   const list = $("#taskList"); list.innerHTML = "";
@@ -737,6 +751,7 @@ function renderTasks() {
   }
   for (const t of board.tasks) list.appendChild(taskRow(t, "backlog"));
   applyBoardFilter();
+  markOneLineRows(list);
 }
 
 // Small pill shown under a task/idea's title when a matching GitHub issue
@@ -1153,6 +1168,7 @@ function renderIdeas() {
   }
   for (const idea of board.ideas) list.appendChild(ideaRow(idea, "ideas"));
   applyBoardFilter();
+  markOneLineRows(list);
 }
 
 function ideaRow(idea, listId) {
