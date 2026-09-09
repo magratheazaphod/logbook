@@ -12,6 +12,7 @@ Start it with:   python3 server.py
 Then open:       http://localhost:8787
 """
 
+import base64
 import json
 import mimetypes
 import os
@@ -37,6 +38,13 @@ ICONS_DIR = ROOT / "icons"
 HANDOFF_DIR = DATA_DIR / "handoffs"
 HANDOFF_INDEX_FILE = HANDOFF_DIR / "index.json"
 HANDOFF_MAX_BYTES = 2_000_000
+# Images are dropped whole rather than as text, so they get their own, roomier
+# ceiling — a screenshot off a Retina display clears 2 MB without trying.
+HANDOFF_IMAGE_MAX_BYTES = 12_000_000
+HANDOFF_IMAGE_TYPES = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+    "image/webp": ".webp", "image/svg+xml": ".svg",
+}
 SUMMARY_CACHE_FILE = DATA_DIR / "session_summaries.json"
 DAY_LOG_CACHE_FILE = DATA_DIR / "day_log_cache.json"
 DAY_SUMMARY_FILE = DATA_DIR / "day_summaries.json"
@@ -989,37 +997,100 @@ def _save_handoff_index(idx):
     os.replace(tmp, HANDOFF_INDEX_FILE)
 
 
-def add_handoff(name, path, text):
-    """Snapshot a dropped doc and return the record the board should store."""
+def add_handoff(name, path, text, kind="doc", data=None, mime=""):
+    """Snapshot a dropped file and return the record the board should store."""
     name = (name or "handoff.md").strip() or "handoff.md"
+    if kind == "image":
+        return _add_image_handoff(name, path, data, mime)
     text = text or ""
     if len(text.encode("utf-8")) > HANDOFF_MAX_BYTES:
         raise ValueError("file too large")
-    path = (path or "").strip()
-    if path:
-        # Only keep a path we could actually read back later.
-        try:
-            if not Path(path).is_file():
-                path = ""
-        except Exception:
-            path = ""
+    path = _keep_path(path)
 
     hid = uuid.uuid4().hex[:12]
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
     (HANDOFF_DIR / f"{hid}.md").write_text(text, encoding="utf-8")
 
-    rec = {"id": hid, "name": name, "path": path,
+    rec = {"id": hid, "name": name, "path": path, "kind": "doc",
            "added": datetime.now().astimezone().isoformat(timespec="seconds")}
     idx = _load_handoff_index()
     idx[hid] = rec
     _save_handoff_index(idx)
-    return {"id": hid, "name": name, "added": rec["added"]}
+    return {"id": hid, "name": name, "kind": "doc", "added": rec["added"]}
+
+
+def _keep_path(path):
+    """Only keep a path we could actually read back later."""
+    path = (path or "").strip()
+    if not path:
+        return ""
+    try:
+        return path if Path(path).is_file() else ""
+    except Exception:
+        return ""
+
+
+def _add_image_handoff(name, path, data, mime):
+    """An image arrives base64-encoded — browsers can't hand us raw bytes in JSON."""
+    mime = (mime or "").split(";")[0].strip().lower()
+    if mime not in HANDOFF_IMAGE_TYPES:
+        guessed = (mimetypes.guess_type(name)[0] or "").lower()
+        if guessed not in HANDOFF_IMAGE_TYPES:
+            raise ValueError("unsupported image type")
+        mime = guessed
+    try:
+        raw = base64.b64decode(data or "", validate=True)
+    except Exception:
+        raise ValueError("bad image data")
+    if not raw:
+        raise ValueError("empty image")
+    if len(raw) > HANDOFF_IMAGE_MAX_BYTES:
+        raise ValueError("image too large")
+
+    ext = HANDOFF_IMAGE_TYPES[mime]
+    hid = uuid.uuid4().hex[:12]
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    (HANDOFF_DIR / f"{hid}{ext}").write_bytes(raw)
+
+    rec = {"id": hid, "name": name, "path": _keep_path(path), "kind": "image",
+           "mime": mime, "ext": ext,
+           "added": datetime.now().astimezone().isoformat(timespec="seconds")}
+    idx = _load_handoff_index()
+    idx[hid] = rec
+    _save_handoff_index(idx)
+    return {"id": hid, "name": name, "kind": "image", "added": rec["added"]}
+
+
+def read_handoff_image(hid):
+    """Bytes + content type for an image handoff, live file first, else snapshot."""
+    rec = _load_handoff_index().get(str(hid or ""))
+    if not rec or rec.get("kind") != "image":
+        return None
+    mime = rec.get("mime") or "application/octet-stream"
+    if rec.get("path"):
+        try:
+            p = Path(rec["path"])
+            if p.is_file() and p.stat().st_size <= HANDOFF_IMAGE_MAX_BYTES:
+                return p.read_bytes(), mime
+        except Exception:
+            pass
+    try:
+        return (HANDOFF_DIR / f"{rec['id']}{rec.get('ext', '')}").read_bytes(), mime
+    except Exception:
+        return None
 
 
 def read_handoff(hid):
     rec = _load_handoff_index().get(str(hid or ""))
     if not rec:
         return None
+    if rec.get("kind") == "image":
+        # The bytes come from /api/handoff/image; this is just the caption.
+        return {"id": rec["id"], "name": rec["name"], "path": rec.get("path", ""),
+                "added": rec.get("added", ""), "kind": "image",
+                "source": "live" if _keep_path(rec.get("path")) else
+                          ("snapshot" if rec.get("path") else "saved"),
+                "text": ""}
     live = ""
     if rec.get("path"):
         try:
@@ -1030,13 +1101,14 @@ def read_handoff(hid):
             live = ""
     if live:
         return {"id": rec["id"], "name": rec["name"], "path": rec["path"],
-                "added": rec.get("added", ""), "source": "live", "text": live}
+                "added": rec.get("added", ""), "source": "live",
+                "kind": "doc", "text": live}
     try:
         snap = (HANDOFF_DIR / f"{rec['id']}.md").read_text(encoding="utf-8", errors="replace")
     except Exception:
         snap = ""
     return {"id": rec["id"], "name": rec["name"], "path": rec.get("path", ""),
-            "added": rec.get("added", ""),
+            "added": rec.get("added", ""), "kind": "doc",
             "source": "snapshot" if rec.get("path") else "saved", "text": snap}
 
 
@@ -1116,6 +1188,13 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"error": "no such handoff"})
                 else:
                     self._send(200, doc)
+            elif path == "/api/handoff/image":
+                q = parse_qs(parsed.query)
+                got = read_handoff_image(q.get("id", [""])[0])
+                if got is None:
+                    self._send(404, {"error": "no such image"})
+                else:
+                    self._send(200, got[0], got[1])
             elif path == "/api/log/dates":
                 self._send(200, {"dates": available_dates()})
             elif path == "/api/log":
@@ -1177,8 +1256,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/handoff":
             try:
-                self._send(200, add_handoff(data.get("name"), data.get("path"),
-                                            data.get("text")))
+                self._send(200, add_handoff(
+                    data.get("name"), data.get("path"), data.get("text"),
+                    kind=data.get("kind", "doc"), data=data.get("data"),
+                    mime=data.get("mime", "")))
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/match-issue":

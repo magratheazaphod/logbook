@@ -12,7 +12,36 @@ cd "$(dirname "$0")"
 PORT="${PORT:-8787}"
 LOG="${LOGBOOK_LOG:-$HOME/logbook-server.log}"
 URL="http://localhost:$PORT/api/board"
+LABEL=com.jesse.logbook
+TARGET="gui/$(id -u)/$LABEL"
 
+# --- if launchd owns the server, restart through it --------------------------
+# The server now runs as a launchd LaunchAgent (RunAtLoad + KeepAlive), so it
+# survives reboots and crashes. If we killed it by hand here, KeepAlive would
+# race to relaunch the old code before our own nohup got a chance to bind the
+# port. `kickstart -k` kills-then-starts through launchd instead, so there's
+# only ever one relaunch path. Falls through to the manual nohup below only if
+# the job was never loaded (e.g. plist missing) - see
+# job-search/tracker/scripts/restart-server.sh for the pattern this mirrors.
+if launchctl print "$TARGET" >/dev/null 2>&1; then
+  echo "Restarting via launchd ($LABEL)"
+  launchctl kickstart -k "$TARGET" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null || echo 000)
+    if [ "$code" = "200" ]; then
+      pid=$(launchctl print "$TARGET" 2>/dev/null | awk -F'= *' '/^[[:space:]]*pid =/ {print $2; exit}')
+      echo "Logbook running at http://localhost:$PORT  (pid ${pid:-unknown})"
+      echo "Health: HTTP 200"
+      exit 0
+    fi
+    sleep 0.3
+  done
+  echo "launchd restart did not become healthy — check $LOG" >&2
+  tail -n 5 "$LOG" >&2 || true
+  exit 1
+fi
+
+# --- fallback: launchd job not loaded, manage the process by hand -----------
 # --- stop whatever is listening on the port ---------------------------------
 pids=$(lsof -ti "tcp:$PORT" 2>/dev/null || true)
 if [ -n "$pids" ]; then

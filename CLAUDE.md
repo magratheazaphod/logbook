@@ -6,18 +6,29 @@ Python 3 standard library only.
 
 ## Run it
 
+The server runs as a launchd LaunchAgent (`~/Library/LaunchAgents/com.jesse.logbook.plist`,
+label `com.jesse.logbook`): `RunAtLoad` + `KeepAlive` means it comes up on login/reboot and
+relaunches itself if it ever crashes, at `http://localhost:8787`.
+
 ```bash
 cd ~/projects/logbook
-python3 server.py          # serves http://localhost:8787
-./restart.sh               # stop + relaunch cleanly after editing server.py
+./restart.sh                       # relaunch cleanly after editing server.py
+launchctl print gui/$(id -u)/com.jesse.logbook   # check it's loaded/running
 ```
 
-Env overrides: `PORT=9000`, `CLAUDE_PROJECTS_DIR=/path/to/projects`.
+`restart.sh` prefers `launchctl kickstart -k` when the agent is loaded (kill-then-start through
+launchd, so `KeepAlive` can't race a manual relaunch and start a second copy on the port); it
+falls back to a manual `nohup python3 server.py` only if the launchd job isn't loaded at all.
+
+Env overrides: `PORT=9000`, `CLAUDE_PROJECTS_DIR=/path/to/projects` (set via the plist's
+`EnvironmentVariables` for the launchd path, or exported before `./restart.sh`'s fallback path).
 
 `index.html` (and the rest of the front end) is read fresh per request, so UI changes only
-need a browser reload. Only **`server.py`** edits require a restart — run `./restart.sh` from
-your normal shell so the relaunched server inherits your `claude` auth (a sanitized env causes
-"Not logged in" failures in headless day-summary generation).
+need a browser reload. Only **`server.py`** edits require a restart. The plist's `PATH` mirrors
+the interactive shell's (including `~/.local/bin` for `claude`) — `server.py` resolves
+`shutil.which("claude")` once at import, and launchd's bare default `PATH` doesn't have it,
+which would silently break headless day-summary generation ("Not logged in" is the symptom of
+this env gap specifically).
 
 ## Layout
 
@@ -54,6 +65,10 @@ logbook/
   drag's `text/uri-list`) in `data/handoffs/index.json`; `GET /api/handoff?id=` re-reads the live
   file so later edits show through, falling back to the snapshot once the original moves or is
   deleted. The board stores only the id, so the endpoint can't be pointed at an arbitrary file.
+  Images (PNG/JPEG/GIF/WebP/SVG) attach the same way but travel as base64 on the same POST
+  (`kind:"image"`), snapshot as bytes to `data/handoffs/<id>.<ext>`, and are served by
+  `GET /api/handoff/image?id=` - `GET /api/handoff` returns only their caption metadata.
+  Clicking such a pill shows the picture in the overlay instead of rendered Markdown.
   The current day's Focus rows take drops too; since a day plan stores whole *copies* of an
   item, an attach/detach on either copy is written to both (`syncHandoffs`). Past days render
   read-only and are excluded.

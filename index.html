@@ -212,6 +212,7 @@
     cursor:pointer;max-width:100%;
   }
   .handoff-pill::before{content:"❧";color:var(--accent);opacity:.8}
+  .handoff-pill.is-image::before{content:"◨"}
   .handoff-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .handoff-pill:hover{border-color:var(--accent);color:var(--accent-ink)}
   li.row.file-over{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft)}
@@ -274,6 +275,11 @@
   .doc-body th,.doc-body td{border:1px solid var(--line);padding:5px 9px;text-align:left}
   .doc-body th{background:var(--paper);font-family:var(--mono);font-weight:600;font-size:12px}
   .doc-body .task-box{color:var(--accent);font-family:var(--mono)}
+  /* A dropped image fills the sheet, on the paper ground so a transparent
+     PNG reads as artwork rather than as a hole in the overlay. */
+  .doc-body.is-image{padding:16px;display:flex;justify-content:center;background:var(--paper)}
+  .doc-body.is-image img{max-width:100%;max-height:calc(85vh - 120px);
+    object-fit:contain;border:1px solid var(--line);border-radius:6px;background:var(--card)}
   .status-done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
   .row .del{
     flex:none;border:0;background:none;color:var(--faint);cursor:pointer;
@@ -778,7 +784,7 @@ function handoffRow(item, onChange) {
   if (!item.handoffs?.length) return null;
   const row = el("div", "handoff-row");
   for (const h of item.handoffs) {
-    const pill = el("button", "handoff-pill");
+    const pill = el("button", "handoff-pill" + (h.kind === "image" ? " is-image" : ""));
     const name = el("span"); name.textContent = h.name;
     pill.appendChild(name);
     pill.title = `Open ${h.name}${h.added ? " — attached " + h.added.slice(0, 10) : ""}`;
@@ -801,6 +807,28 @@ function handoffRow(item, onChange) {
   return row;
 }
 
+// Images are attached as pictures, not as text. Finder sometimes hands over a
+// file with an empty `type`, so the extension is the fallback authority.
+const IMAGE_EXTS = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+                     gif: "image/gif", webp: "image/webp", svg: "image/svg+xml" };
+
+function imageMime(f) {
+  const ext = (f.name.split(".").pop() || "").toLowerCase();
+  return IMAGE_EXTS[ext] || ((f.type || "").startsWith("image/") ? f.type : "");
+}
+const isImageFile = f => !!imageMime(f);
+
+// JSON can't carry bytes, and hand-rolling base64 over a multi-megabyte
+// ArrayBuffer blows the argument limit — a data: URL does it natively.
+function fileAsBase64(f) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+}
+
 // Files dropped onto a row (rather than another card being reordered onto it).
 // `files`/`uris` must be read off the event synchronously by the caller — a
 // DataTransfer is dead the moment the drop handler returns.
@@ -809,15 +837,18 @@ async function attachHandoffFiles(item, files, uris) {
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     try {
-      const text = await f.text();
       // Finder and most editors also put a file:// URL on the drag, which is
       // the only way a browser will tell us where the file actually lives.
       const uri = uris[i] || (uris.length === 1 ? uris[0] : "");
       const path = uri ? decodeURI(uri.replace(/^file:\/\//, "")) : "";
+      const payload = isImageFile(f)
+        ? { name: f.name, path, kind: "image", mime: imageMime(f),
+            data: await fileAsBase64(f) }
+        : { name: f.name, path, text: await f.text() };
       const r = await fetch("/api/handoff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: f.name, path, text }),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error("save failed");
       const rec = await r.json();
@@ -975,6 +1006,17 @@ function openHandoff(h) {
       meta.textContent = doc.source === "snapshot" ? "snapshot — original file is gone"
         : doc.source === "live" ? "live file" : "saved copy";
       meta.title = doc.path || "";
+      if (doc.kind === "image") {
+        body.textContent = "";
+        body.classList.add("is-image");
+        const img = document.createElement("img");
+        img.alt = doc.name;
+        img.onerror = () => { body.classList.remove("is-image");
+                              body.textContent = "Couldn't read this image."; };
+        img.src = "/api/handoff/image?id=" + encodeURIComponent(h.id);
+        body.appendChild(img);
+        return;
+      }
       body.innerHTML = renderMarkdown(doc.text || "");
       for (const a of body.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener"; }
     })
