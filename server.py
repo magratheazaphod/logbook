@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import html
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -398,6 +399,11 @@ def read_session_file(path, project_override=None, title_override=None, source="
 # or errors out.
 # --------------------------------------------------------------------------- #
 _summary_cache = None
+# The summary pool writes this cache from up to 8 threads at once. Without a
+# lock they interleave on one shared temp path and the last replace() wins,
+# silently dropping the other threads' entries - which puts those sessions
+# straight back into the "needs generating" set on the next load.
+_summary_lock = threading.Lock()
 CLAUDE_BIN = shutil.which("claude")
 
 
@@ -556,7 +562,7 @@ def _save_summary_cache():
     if _summary_cache is None:
         return
     try:
-        tmp = SUMMARY_CACHE_FILE.with_suffix(".json.tmp")
+        tmp = SUMMARY_CACHE_FILE.with_suffix(f".{uuid.uuid4().hex[:8]}.json.tmp")
         tmp.write_text(json.dumps(_summary_cache, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(SUMMARY_CACHE_FILE)
     except Exception:
@@ -646,8 +652,9 @@ def session_summary(s):
         return cached["summary"]
     summary = _generate_summary(s.get("synopsis"), s.get("last_assistant"), s.get("user_prompts"))
     if summary:
-        cache[key] = {"summary": summary}
-        _save_summary_cache()
+        with _summary_lock:
+            cache[key] = {"summary": summary}
+            _save_summary_cache()
         return summary
     # LLM unavailable: show a truncated fallback but DON'T cache it, so the
     # real summary gets generated on a later load instead of being frozen in.
@@ -655,12 +662,32 @@ def session_summary(s):
 
 
 def summarize_sessions(sessions):
-    """Fill in missing summaries concurrently (cached ones return instantly)."""
-    need = [s for s in sessions if s["id"] not in _load_summary_cache()]
+    """Fill in missing summaries concurrently (cached ones return instantly).
+
+    Every uncached session gets exactly ONE generation attempt per request,
+    and that result is reused for the returned map. Calling session_summary
+    a second time to build the map looks free - a cached session is just a
+    dict lookup - but an attempt that FAILED is deliberately not cached, so
+    the second pass re-ran it, one session at a time. On a loaded machine,
+    where every headless call burns its full timeout, that turned 8 parallel
+    30s calls into 8 parallel plus 8 sequential: a four-minute page load.
+    A failed attempt still isn't cached, so a later load retries it - just
+    not twice within this one.
+    """
+    cache = _load_summary_cache()
+    summaries = {}
+    need = []
+    for s in sessions:
+        cached = cache.get(s["id"])
+        if cached:
+            summaries[s["id"]] = cached["summary"]
+        else:
+            need.append(s)
     if need:
         with ThreadPoolExecutor(max_workers=min(8, len(need))) as pool:
-            list(pool.map(session_summary, need))
-    return {s["id"]: session_summary(s) for s in sessions}
+            for s, summary in zip(need, pool.map(session_summary, need)):
+                summaries[s["id"]] = summary
+    return summaries
 
 
 def _scan_and_cache(files, parse_fn):
