@@ -85,3 +85,13 @@ logbook/
   real Dock icon and a chromeless window.
 - Server binds to `127.0.0.1` only; no outbound calls. Parser is defensive and skips transcript
   lines it doesn't recognize, so a Claude Code format change degrades gracefully.
+
+## Contributing
+
+Work on a branch and merge it, never commit straight to `main`. Even for a one-line fix:
+branch, commit, open a PR (`gh pr create`), merge it. PRs #1-#3 followed this; a long run of
+direct-to-main commits after them did not, which is the habit being corrected here - the
+history stays as it is, but new work goes through a branch.
+
+Merge with `--no-ff` so each fix stays a reviewable unit rather than dissolving into `main`'s
+commit stream.
