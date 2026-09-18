@@ -65,6 +65,14 @@ the mechanical layout, run instructions, and file responsibilities.
 - **Session summaries memoized by session ID only, never invalidated** — a session spanning
   multiple days must show the *same name* every day it appears; mtime-based invalidation both
   wasted LLM calls and caused inconsistent naming.
+  Since September 18, 2026 a summary is only persisted once its session has been quiet for
+  30 minutes (a live session's name, written from its first prompt, went stale); until then
+  it lives in memory and is refreshed at most every 10 minutes.
+- **Summaries never block the page** (September 18, 2026). `/api/log` used to wait on every
+  missing `claude -p` call, so a day with a few new sessions took 40-50s. Now generation runs
+  in a background pool, the response carries `pending: true` with titles standing in, and the
+  UI re-polls every 4s. A past day is only frozen to disk once all its names are final, and
+  its day summary only generates after that.
 - **One-sentence editable day-summary at the top of each day** — generated from that day's
   session summaries, skipped entirely for the in-progress/today day, permanently remembers
   manual edits. Prompt was explicitly tuned to **prioritize naming a standout
