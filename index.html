@@ -381,6 +381,17 @@
     color:var(--muted);margin-bottom:8px;
   }
   .tf-list{gap:7px}
+  .tf-sub{margin-top:14px}
+  /* Content cards carry a "post on" date that schedules them into a day's focus */
+  .post-date{
+    display:inline-flex;align-items:center;gap:5px;margin-top:6px;
+    font-family:var(--mono);font-size:11px;color:var(--faint);
+  }
+  .post-date input{
+    font:inherit;color:var(--muted);background:transparent;border:1px solid var(--line);
+    border-radius:999px;padding:1px 6px;color-scheme:light dark;
+  }
+  .post-date.overdue, .post-date.overdue input{color:var(--accent);border-color:var(--accent-soft-line)}
   .tf-empty{
     border:1px dashed var(--line-strong);border-radius:var(--radius);
     padding:14px 12px;font-size:12.5px;text-align:center;background:transparent;
@@ -789,6 +800,13 @@ function handleDrop(e, targetListId, targetId) {
   const fromId = payload && payload.id, fromListId = payload && payload.listId;
   const from = DND[fromListId], to = DND[targetListId];
   if (!fromId || !from || !to) return;
+  if (targetListId === "today-content") {
+    const item = board.content.find(x => x.id === fromId);
+    if (!item || fromListId !== "content") return;
+    item.postDate = todayKey(); item.updated = new Date().toISOString();
+    onContentChange(); save();
+    return;
+  }
   const kindOk = from.kind === to.kind || (CROSSABLE.has(fromListId) && CROSSABLE.has(targetListId));
   if (!kindOk) return;
   const fromIdx = from.arr.findIndex(x => x.id === fromId);
@@ -1315,6 +1333,23 @@ function renderIdeas() {
   markOneLineRows(list);
 }
 
+// The day a content piece is meant to go out. A dated, unfinished piece shows
+// up in that day's focus (and stays there, flagged, until it's marked done).
+function postDateRow(item, onChange) {
+  const wrap = el("label", "post-date");
+  if (item.postDate && item.postDate < todayKey() && item.status !== "done") wrap.classList.add("overdue");
+  const txt = el("span"); txt.textContent = "post";
+  const inp = el("input"); inp.type = "date"; inp.value = item.postDate || "";
+  inp.setAttribute("aria-label", "Post date");
+  inp.addEventListener("change", () => {
+    if (inp.value) item.postDate = inp.value; else delete item.postDate;
+    item.updated = new Date().toISOString();
+    onChange(); save();
+  });
+  wrap.append(txt, inp);
+  return wrap;
+}
+
 function ideaRow(idea, listId) {
   const { onChange } = DND[listId];
   const li = el("li", "row status-" + (idea.status || "backlog"));
@@ -1348,6 +1383,7 @@ function ideaRow(idea, listId) {
   if (issueRow) body.appendChild(issueRow);
   const hoRow = handoffRow(idea, onChange);
   if (hoRow) body.appendChild(hoRow);
+  if (listId === "content") body.appendChild(postDateRow(idea, onChange));
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
   del.onclick = () => deleteItem(idea, listId);
   const top = toTopButton(idea, listId);
@@ -1366,7 +1402,7 @@ function addTask() {
 // Content topics (articles, episodes, videos) reuse the idea card as-is; they
 // skip the GitHub issue lookup, which only makes sense for code work.
 function renderContent() {
-  registerList("content", board.content, renderContent, "content");
+  registerList("content", board.content, onContentChange, "content");
   const list = $("#contentList"); list.innerHTML = "";
   $("#contentCount").textContent = board.content.length ? `${board.content.length}` : "";
   if (!board.content.length) {
@@ -1375,6 +1411,13 @@ function renderContent() {
   }
   for (const item of board.content) list.appendChild(ideaRow(item, "content"));
   applyBoardFilter();
+}
+// A content card also appears (as the same object, not a copy) in the focus
+// of the day it's due, so either view changing redraws both.
+function onContentChange() {
+  renderContent();
+  const tf = $("#todayFocus");
+  if (tf && iso(logDate) === todayKey()) renderTodayFocus(tf, todayKey());
 }
 function addContent() {
   const inp = $("#contentInput"); const v = inp.value.trim(); if (!v) return;
@@ -1401,14 +1444,48 @@ function renderTodayFocus(container, dateKey) {
   board.dayPlans ||= {};
   const plan = board.dayPlans[dateKey];
 
-  if (!isToday && (!plan || (!plan.tasks?.length && !plan.ideas?.length))) {
+  const due = contentDue(dateKey, isToday);
+  if (!isToday && !due.length && (!plan || (!plan.tasks?.length && !plan.ideas?.length))) {
     return; // nothing to show for a past/future day with no history
   }
 
   const wrap = el("div", "today-focus");
   wrap.appendChild(focusColumn("Tasks", "task", dateKey, isToday, plan));
-  wrap.appendChild(focusColumn("Ideas", "idea", dateKey, isToday, plan));
+  const ideasCol = focusColumn("Ideas", "idea", dateKey, isToday, plan);
+  ideasCol.appendChild(focusContent(due, isToday));
+  wrap.appendChild(ideasCol);
   container.appendChild(wrap);
+}
+
+// Content isn't dragged into a day plan like tasks and ideas - it's
+// scheduled by its post date, so the day's list is derived from the board.
+// Today also carries anything overdue and still unposted, so a missed date
+// keeps nagging instead of silently passing.
+function contentDue(dateKey, isToday) {
+  return (board.content || []).filter(c => c.postDate && (
+    c.postDate === dateKey || (isToday && c.postDate < dateKey && c.status !== "done")));
+}
+
+function focusContent(due, isToday) {
+  const sub = el("div", "tf-sub");
+  const head = el("div", "tf-head");
+  head.textContent = (isToday ? "Today's " : "That day's ") + "Content";
+  const list = el("ul", "list tf-list");
+  sub.append(head, list);
+  if (isToday) {
+    // Dropping a content card here dates it for today (see handleDrop).
+    registerList("today-content", due, () => onContentChange(), "content");
+    registerContainerDrop(list, "today-content");
+  }
+  if (!due.length) {
+    const e = el("div", "empty tf-empty");
+    e.textContent = isToday ? "Nothing to post today. Give a content card a post date, or drag one here."
+                            : "Nothing here.";
+    list.appendChild(e);
+  } else {
+    for (const item of due) list.appendChild(isToday ? ideaRow(item, "content") : readOnlyRow(item, "content"));
+  }
+  return sub;
 }
 
 function focusColumn(label, kind, dateKey, isToday, plan) {
