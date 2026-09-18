@@ -4,7 +4,7 @@ Logbook - a lightweight personal task tracker with an auto-generated daily log.
 
 Runs entirely on the Python standard library (no pip installs). It:
   - serves the single-page UI (index.html)
-  - persists your backlog + ideas to data/board.json
+  - persists your backlog, ideas + content topics to data/board.json
   - reads your Claude Code session transcripts (~/.claude/projects/**/*.jsonl)
     and turns each day's agent activity into a readable log
 
@@ -82,7 +82,7 @@ COWORK_SESSION_DENYLIST = {
 
 PORT = int(os.environ.get("PORT", "8787"))
 
-DEFAULT_BOARD = {"tasks": [], "ideas": [], "dayPlans": {}}
+DEFAULT_BOARD = {"tasks": [], "ideas": [], "content": [], "dayPlans": {}}
 
 # Sessions using fewer total tokens than this are treated as drive-bys (a quick
 # question, not real work) and dropped from the log.
@@ -150,6 +150,7 @@ def load_board():
             data = json.load(f)
         data.setdefault("tasks", [])
         data.setdefault("ideas", [])
+        data.setdefault("content", [])
         data.setdefault("dayPlans", {})
         data.setdefault("rev", 0)
         if roll_over_stale_day_plans(data):
@@ -157,7 +158,7 @@ def load_board():
             save_board(data)
         return data
     except Exception:
-        return dict(DEFAULT_BOARD, tasks=[], ideas=[], dayPlans={})
+        return dict(DEFAULT_BOARD, tasks=[], ideas=[], content=[], dayPlans={})
 
 
 def backup_board_daily():
@@ -1312,6 +1313,7 @@ class Handler(BaseHTTPRequestHandler):
                 board = {
                     "tasks": data.get("tasks", []),
                     "ideas": data.get("ideas", []),
+                    "content": data.get("content", []),
                     "dayPlans": data.get("dayPlans", {}),
                     "rev": current.get("rev", 0) + 1,
                 }

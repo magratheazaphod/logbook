@@ -512,7 +512,7 @@
     <div class="brand">
       <span class="mark" aria-hidden="true"></span>
       <h1>Logbook</h1>
-      <span class="tag">backlog · ideas · daily log</span>
+      <span class="tag">backlog · ideas · content · daily log</span>
       <span class="dev-badge" id="devBadge" hidden title="Running on a non-default port - not the instance with your real board">DEV</span>
     </div>
     <div class="top-right">
@@ -525,8 +525,8 @@
     <!-- LEFT: board ----------------------------------------------------- -->
     <div class="board-col">
       <div class="board-search">
-        <input id="boardSearch" type="search" placeholder="Search backlog &amp; ideas…"
-          aria-label="Search backlog and ideas" autocomplete="off">
+        <input id="boardSearch" type="search" placeholder="Search backlog, ideas &amp; content…"
+          aria-label="Search backlog, ideas and content" autocomplete="off">
       </div>
       <section class="block">
         <div class="col-head">
@@ -550,6 +550,18 @@
           <button id="ideaAdd">Add</button>
         </div>
         <ul class="list" id="ideaList"></ul>
+      </section>
+
+      <section class="block">
+        <div class="col-head">
+          <h2>Content</h2>
+          <span class="count" id="contentCount"></span>
+        </div>
+        <div class="add">
+          <input id="contentInput" type="text" placeholder="Add an article, episode or video topic…" aria-label="Add a content topic">
+          <button id="contentAdd">Add</button>
+        </div>
+        <ul class="list" id="contentList"></ul>
       </section>
     </div>
 
@@ -583,7 +595,7 @@ const $ = s => document.querySelector(s);
 const el = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 
-let board = { tasks: [], ideas: [] };
+let board = { tasks: [], ideas: [], content: [] };
 const STATUSES = ["backlog", "doing", "done"];
 const STATUS_LABEL = { backlog: "todo", doing: "doing", done: "done" };
 
@@ -671,8 +683,8 @@ function adoptBoard(fresh) {
   // undo describes a board that no longer exists, so retire it.
   clearUndo();
   board = fresh;
-  board.tasks ||= []; board.ideas ||= []; board.dayPlans ||= {};
-  renderTasks(); renderIdeas(); loadLog();
+  board.tasks ||= []; board.ideas ||= []; board.content ||= []; board.dayPlans ||= {};
+  renderTasks(); renderIdeas(); renderContent(); loadLog();
 }
 
 function save() {
@@ -763,11 +775,13 @@ function registerContainerDrop(container, listId) {
   });
 }
 
-// Backlog and Ideas share the same item shape (title/status/linkedIssue), so
-// a row can cross between them - that's how an idea gets promoted to a task
-// (or vice versa) without a separate "convert" action. Today's Focus columns
-// stay kind-locked since a day plan's tasks/ideas split is meant to mirror it.
-const CROSSABLE = new Set(["backlog", "ideas"]);
+// Backlog, Ideas and Content share the same item shape (title/status/
+// linkedIssue), so a row can cross between them - that's how an idea gets
+// promoted to a task or a content topic (or back) without a separate
+// "convert" action. Today's Focus columns stay kind-locked since a day plan's
+// tasks/ideas split is meant to mirror it; a content topic to work today goes
+// via the backlog.
+const CROSSABLE = new Set(["backlog", "ideas", "content"]);
 
 function handleDrop(e, targetListId, targetId) {
   let payload;
@@ -797,7 +811,7 @@ function handleDrop(e, targetListId, targetId) {
 let searchQuery = "";
 function applyBoardFilter() {
   const q = searchQuery.trim().toLowerCase();
-  for (const [listSel, name] of [["#taskList", "backlog"], ["#ideaList", "ideas"]]) {
+  for (const [listSel, name] of [["#taskList", "backlog"], ["#ideaList", "ideas"], ["#contentList", "content"]]) {
     const list = $(listSel);
     if (!list) continue;
     const rows = list.querySelectorAll("li.row");
@@ -959,7 +973,7 @@ async function attachHandoffFiles(item, files, uris) {
 // would appear on today's copy and be lost the moment it rolls back over.
 function twinsOf(id) {
   const twins = [];
-  for (const arr of [board.tasks, board.ideas]) {
+  for (const arr of [board.tasks, board.ideas, board.content]) {
     for (const x of arr || []) if (x.id === id) twins.push(x);
   }
   const plan = board.dayPlans?.[todayKey()];
@@ -979,7 +993,7 @@ function syncHandoffs(item) {
 
 // Both places a card can appear have to redraw, wherever the drop landed.
 function refreshAfterHandoff() {
-  renderTasks(); renderIdeas();
+  renderTasks(); renderIdeas(); renderContent();
   const tf = $("#todayFocus");
   if (tf?.querySelector("ul[data-list-id]")) renderTodayFocus(tf, todayKey());
 }
@@ -1010,7 +1024,7 @@ function initFileDrop() {
   // attachHandoffFiles). Past days render read-only rows and carry no
   // data-list-id, which keeps them out of this scan.
   const dropLists = () => {
-    const out = [[$("#taskList"), "backlog"], [$("#ideaList"), "ideas"]];
+    const out = [[$("#taskList"), "backlog"], [$("#ideaList"), "ideas"], [$("#contentList"), "content"]];
     for (const ul of document.querySelectorAll("#todayFocus ul[data-list-id]")) {
       out.push([ul, ul.dataset.listId]);
     }
@@ -1054,7 +1068,7 @@ function initFileDrop() {
     e.stopPropagation();
     const hit = targetUnder(e);
     clear();
-    if (!hit) { flashNote("drop a doc onto a backlog or idea card", true); return; }
+    if (!hit) { flashNote("drop a doc onto a backlog, idea or content card", true); return; }
     const item = DND[hit.listId]?.arr.find(x => x.id === hit.id);
     // Both must be read now — a DataTransfer is dead once this handler returns.
     const files = Array.from(e.dataTransfer.files);
@@ -1348,6 +1362,26 @@ function addTask() {
   board.tasks.unshift(t);  // new items land on top so they don't require scrolling to find
   inp.value = ""; renderTasks(); save();
   checkForMatchingIssue(t, board.tasks, renderTasks);
+}
+// Content topics (articles, episodes, videos) reuse the idea card as-is; they
+// skip the GitHub issue lookup, which only makes sense for code work.
+function renderContent() {
+  registerList("content", board.content, renderContent, "content");
+  const list = $("#contentList"); list.innerHTML = "";
+  $("#contentCount").textContent = board.content.length ? `${board.content.length}` : "";
+  if (!board.content.length) {
+    const e = el("div", "empty"); e.textContent = "Articles, episodes and videos to make.";
+    list.appendChild(e); return;
+  }
+  for (const item of board.content) list.appendChild(ideaRow(item, "content"));
+  applyBoardFilter();
+}
+function addContent() {
+  const inp = $("#contentInput"); const v = inp.value.trim(); if (!v) return;
+  const item = { id: crypto.randomUUID(), title: v, status: "backlog",
+    created: new Date().toISOString(), updated: new Date().toISOString() };
+  board.content.unshift(item);  // new items land on top so they don't require scrolling to find
+  inp.value = ""; renderContent(); save();
 }
 function addIdea() {
   const inp = $("#ideaInput"); const v = inp.value.trim(); if (!v) return;
@@ -1666,17 +1700,20 @@ async function boot() {
   try {
     const r = await fetch("/api/board");
     board = await r.json();
-    board.tasks ||= []; board.ideas ||= []; board.dayPlans ||= {};
-  } catch (e) { board = { tasks: [], ideas: [], dayPlans: {} }; }
+    board.tasks ||= []; board.ideas ||= []; board.content ||= []; board.dayPlans ||= {};
+  } catch (e) { board = { tasks: [], ideas: [], content: [], dayPlans: {} }; }
 
-  renderTasks(); renderIdeas();
+  renderTasks(); renderIdeas(); renderContent();
   registerContainerDrop($("#taskList"), "backlog");
   registerContainerDrop($("#ideaList"), "ideas");
+  registerContainerDrop($("#contentList"), "content");
 
   $("#taskAdd").onclick = addTask;
   $("#taskInput").addEventListener("keydown", e => { if (e.key === "Enter") addTask(); });
   $("#ideaAdd").onclick = addIdea;
   $("#ideaInput").addEventListener("keydown", e => { if (e.key === "Enter") addIdea(); });
+  $("#contentAdd").onclick = addContent;
+  $("#contentInput").addEventListener("keydown", e => { if (e.key === "Enter") addContent(); });
 
   const boardSearch = $("#boardSearch");
   boardSearch.addEventListener("input", e => { searchQuery = e.target.value; applyBoardFilter(); });
