@@ -11,6 +11,10 @@
 <link rel="icon" type="image/svg+xml" href="/icons/logbook-small.svg">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<script>
+  try{const t=localStorage.getItem('logbook-theme');
+    if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}
+</script>
 <style>
   :root{
     --paper:#F1E6E4;
@@ -23,11 +27,55 @@
     --accent:#B23A2E;      /* brick red — the one signal colour */
     --accent-ink:#7C2620;
     --accent-soft:#F5DEDA;
+    --accent-soft-line:#E6C6C1;
+    --on-accent:#FFFFFF;
     --done:#8A8D8A;
+    --cowork-ink:#4A3AA7;
+    --cowork-bg:#ECE9F9;
+    --cowork-line:#D7D0F0;
+    --warn-ink:#8A4B1F;
+    --warn-bg:#F7EAD9;
+    --warn-line:#E8D3B3;
+    --scrim:rgba(27,29,30,.42);
     --radius:10px;
     --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
+    --shadow-float:0 3px 10px rgba(20,20,20,.10),0 1px 2px rgba(20,20,20,.06);
+    --shadow-lift:0 4px 14px rgba(20,20,20,.28);
+    --shadow-modal:0 10px 40px rgba(20,20,20,.25);
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    color-scheme:light;
+  }
+  /* Dark theme: follows the OS unless the header toggle pins a choice, which
+     sets data-theme on <html> (stored per browser in localStorage). The two
+     blocks must stay identical - CSS can't share a rule body across them. */
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#211A18;--card:#2C2422;--ink:#EDE6E3;--muted:#A89A96;--faint:#71645F;
+      --line:#3B302C;--line-strong:#4C3D38;--accent:#D96A5C;--accent-ink:#F0B3AA;
+      --accent-soft:#452622;--accent-soft-line:#5C332D;--on-accent:#1B1412;--done:#7A7D7A;
+      --cowork-ink:#BDB3F2;--cowork-bg:#2B2640;--cowork-line:#403862;
+      --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
+      --scrim:rgba(0,0,0,.6);
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
+      --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+      --shadow-lift:0 4px 14px rgba(0,0,0,.6);
+      --shadow-modal:0 10px 40px rgba(0,0,0,.6);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#211A18;--card:#2C2422;--ink:#EDE6E3;--muted:#A89A96;--faint:#71645F;
+    --line:#3B302C;--line-strong:#4C3D38;--accent:#D96A5C;--accent-ink:#F0B3AA;
+    --accent-soft:#452622;--accent-soft-line:#5C332D;--on-accent:#1B1412;--done:#7A7D7A;
+    --cowork-ink:#BDB3F2;--cowork-bg:#2B2640;--cowork-line:#403862;
+    --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
+    --scrim:rgba(0,0,0,.6);
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
+    --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+    --shadow-lift:0 4px 14px rgba(0,0,0,.6);
+    --shadow-modal:0 10px 40px rgba(0,0,0,.6);
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -41,6 +89,14 @@
      instance never gets mistaken for the real board at a glance. */
   body.dev{
     --paper:#FCF3D9;--card:#FFFCF1;--line:#E8DCA8;--line-strong:#D9C978;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]) body.dev{
+      --paper:#221D0E;--card:#2D2715;--line:#433A1C;--line-strong:#5A4D22;
+    }
+  }
+  :root[data-theme="dark"] body.dev{
+    --paper:#221D0E;--card:#2D2715;--line:#433A1C;--line-strong:#5A4D22;
   }
   body.dev::before{
     content:"";position:fixed;top:0;left:0;right:0;height:5px;z-index:20;
@@ -74,6 +130,13 @@
   .brand .tag{color:var(--muted);font-size:13px;font-family:var(--mono)}
   .today{font-family:var(--mono);font-size:12.5px;color:var(--muted);
     letter-spacing:.02em}
+  .top-right{display:flex;align-items:center;gap:14px}
+  .theme-toggle{
+    font:500 11.5px var(--mono);letter-spacing:.04em;color:var(--muted);
+    background:var(--card);border:1px solid var(--line);border-radius:999px;
+    padding:3px 10px;cursor:pointer;
+  }
+  .theme-toggle:hover{border-color:var(--accent);color:var(--accent-ink)}
 
   /* Layout ---------------------------------------------------------------- */
   .grid{display:flex;align-items:flex-start}
@@ -192,7 +255,7 @@
   .issue-row{display:flex;align-items:center;gap:6px;margin-top:6px}
   .issue-link{
     font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
-    background:var(--accent-soft);color:var(--accent-ink);border:1px solid #e6c6c1;
+    background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent-soft-line);
     text-decoration:none;
   }
   .issue-link:hover{text-decoration:underline}
@@ -227,17 +290,17 @@
     position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:70;
     font-family:var(--mono);font-size:12px;color:var(--card);
     background:var(--accent-ink);padding:7px 14px;border-radius:999px;
-    box-shadow:0 4px 14px rgba(20,20,20,.28);pointer-events:none;white-space:nowrap;
+    box-shadow:var(--shadow-lift);pointer-events:none;white-space:nowrap;
   }
 
   /* Handoff overlay ------------------------------------------------------- */
   .doc-overlay{
-    position:fixed;inset:0;z-index:60;background:rgba(27,29,30,.42);
+    position:fixed;inset:0;z-index:60;background:var(--scrim);
     display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;
   }
   .doc-sheet{
     background:var(--card);border:1px solid var(--line-strong);border-radius:var(--radius);
-    box-shadow:0 10px 40px rgba(20,20,20,.25);width:min(760px,100%);
+    box-shadow:var(--shadow-modal);width:min(760px,100%);
     max-height:100%;display:flex;flex-direction:column;overflow:hidden;
   }
   .doc-head{
@@ -371,11 +434,11 @@
   .meta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
   .pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
     background:var(--paper);border:1px solid var(--line);color:var(--muted)}
-  .pill.proj{color:var(--accent-ink);background:var(--accent-soft);border-color:#e6c6c1}
+  .pill.proj{color:var(--accent-ink);background:var(--accent-soft);border-color:var(--accent-soft-line)}
   .pill.branch::before{content:"⎇ ";opacity:.7}
   .pill.turns{color:var(--muted)}
   .pill.tokens{color:var(--accent-ink)}
-  .pill.source-cowork{color:#4a3aa7;background:#ece9f9;border-color:#d7d0f0}
+  .pill.source-cowork{color:var(--cowork-ink);background:var(--cowork-bg);border-color:var(--cowork-line)}
   .pill.source-cowork::before{content:"⧉ ";opacity:.85}
 
   /* agent groups ------------------------------------------------------- */
@@ -416,26 +479,26 @@
   .log-empty code{font-family:var(--mono);font-size:12px;background:var(--paper);
     padding:1px 6px;border-radius:5px;border:1px solid var(--line)}
 
-  .warn{font-family:var(--mono);font-size:12px;color:#8a4b1f;background:#f7ead9;
-    border:1px solid #e8d3b3;border-radius:8px;padding:10px 12px;margin-bottom:16px}
+  .warn{font-family:var(--mono);font-size:12px;color:var(--warn-ink);background:var(--warn-bg);
+    border:1px solid var(--warn-line);border-radius:8px;padding:10px 12px;margin-bottom:16px}
   .savenote{position:fixed;bottom:16px;right:18px;font-family:var(--mono);font-size:11px;
     color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:7px;
     padding:5px 10px;box-shadow:var(--shadow);opacity:0;transition:opacity .25s}
   .savenote.show{opacity:1}
-  .savenote.stale{color:#8a4b1f;background:#f7ead9;border-color:#e8d3b3}
+  .savenote.stale{color:var(--warn-ink);background:var(--warn-bg);border-color:var(--warn-line)}
   /* Top right, in the accent colour: this one asks for a decision inside a few
      seconds, so unlike the save note it has to catch the eye on its own. */
   .undonote{position:fixed;top:16px;right:18px;z-index:10;
     display:flex;align-items:center;gap:12px;
     font-size:13.5px;font-weight:550;letter-spacing:-.005em;color:var(--accent-ink);
-    background:var(--accent-soft);border:1px solid #e0b3ad;border-radius:9px;
+    background:var(--accent-soft);border:1px solid var(--accent-soft-line);border-radius:9px;
     padding:8px 8px 8px 13px;
-    box-shadow:0 3px 10px rgba(20,20,20,.10),0 1px 2px rgba(20,20,20,.06);
+    box-shadow:var(--shadow-float);
     opacity:0;transform:translateY(-6px);pointer-events:none;
     transition:opacity .18s ease-out,transform .18s ease-out}
   .undonote.show{opacity:1;transform:none;pointer-events:auto}
   .undonote .what{max-width:30ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .undonote button{font:inherit;font-weight:650;color:#fff;background:var(--accent);
+  .undonote button{font:inherit;font-weight:650;color:var(--on-accent);background:var(--accent);
     border:1px solid var(--accent);border-radius:6px;padding:3px 12px;cursor:pointer}
   .undonote button:hover{background:var(--accent-ink);border-color:var(--accent-ink)}
   @media (prefers-reduced-motion:reduce){
@@ -452,7 +515,10 @@
       <span class="tag">backlog · ideas · daily log</span>
       <span class="dev-badge" id="devBadge" hidden title="Running on a non-default port - not the instance with your real board">DEV</span>
     </div>
-    <div class="today" id="todayStamp"></div>
+    <div class="top-right">
+      <div class="today" id="todayStamp"></div>
+      <button class="theme-toggle" id="themeToggle" type="button"></button>
+    </div>
   </header>
 
   <div class="grid">
@@ -520,6 +586,28 @@ const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':
 let board = { tasks: [], ideas: [] };
 const STATUSES = ["backlog", "doing", "done"];
 const STATUS_LABEL = { backlog: "todo", doing: "doing", done: "done" };
+
+// ---- theme toggle -------------------------------------------------------
+// Cycles auto -> light -> dark. "auto" follows the OS; the other two pin a
+// theme via data-theme on <html>. The choice is per browser (localStorage),
+// not part of the board - it's a display preference, not data.
+const THEME_ORDER = ["auto", "light", "dark"];
+const themeMedia = matchMedia("(prefers-color-scheme: dark)");
+function currentTheme() { return document.documentElement.dataset.theme || "auto"; }
+function applyTheme(t) {
+  if (t === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  try { if (t === "auto") localStorage.removeItem("logbook-theme"); else localStorage.setItem("logbook-theme", t); } catch (e) {}
+  const btn = $("#themeToggle");
+  btn.textContent = { auto: "◐ auto", light: "☀ light", dark: "☾ dark" }[t];
+  btn.title = "Theme: " + t + " (click to change)";
+  const dark = t === "dark" || (t === "auto" && themeMedia.matches);
+  $('meta[name="theme-color"]').content = dark ? "#211A18" : "#F1E6E4";
+}
+$("#themeToggle").addEventListener("click", () =>
+  applyTheme(THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length]));
+themeMedia.addEventListener("change", () => applyTheme(currentTheme()));
+applyTheme(currentTheme());
 
 // ---- dev-mode indicator -------------------------------------------------
 // Any port other than the default 8787 means this isn't the everyday
