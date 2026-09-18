@@ -75,6 +75,9 @@ logbook/
 - **Daily log**: `GET /api/log?date=YYYY-MM-DD` reads `~/.claude/projects/**/*.jsonl`, groups that
   day's sessions, and returns start/end times, project, git branch, prompt counts, and a title
   (Claude Code's own session summary, falling back to the first user prompt). Rendered as a ledger.
+  Short LLM session summaries and past days' one-sentence summaries are generated in a
+  background pool, never on the request path: the response says `pending: true` while any are
+  outstanding and the UI re-polls. Session summaries persist only once the session is quiet.
 - **Theme**: light and dark palettes are `:root` tokens in `index.html`; dark follows the OS
   unless the header pill pins light or dark (`data-theme` on `<html>`, saved in localStorage
   and applied by an inline script before first paint). New colours must be tokens with a value

@@ -639,55 +639,85 @@ def _generate_summary(synopsis, last_assistant, user_prompts=None):
     return _call_claude_headless(prompt, max_words=10) or None
 
 
-def session_summary(s):
-    """Cached 4-10 word summary of what happened in this session.
+# A session still being worked in keeps growing, so a name written from its
+# first few prompts goes stale. Summaries are only persisted once a session
+# has been quiet this long; until then they live in _live_summaries and are
+# refreshed at most every SESSION_RESUMMARIZE_SECS as the session grows.
+SESSION_QUIET_SECS = 30 * 60
+SESSION_RESUMMARIZE_SECS = 10 * 60
 
-    Keyed on session id alone (not mtime) and never regenerated once set:
-    a session that spans multiple days, or keeps growing after its summary
-    was first written, must show the same name everywhere it appears."""
-    cache = _load_summary_cache()
-    key = s["id"]
-    cached = cache.get(key)
-    if cached:
-        return cached["summary"]
-    summary = _generate_summary(s.get("synopsis"), s.get("last_assistant"), s.get("user_prompts"))
-    if summary:
+# Summaries are generated off the request path: /api/log answers at once with
+# whatever is known (a title stands in for anything missing) plus a
+# `pending` flag, and the UI re-polls until the flag clears. A slow or hung
+# `claude -p` call can then never hold the page hostage.
+_summary_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="summary")
+_inflight = set()          # session ids with a generation queued or running
+_live_summaries = {}       # session id -> (last_event_ts, summary, made_at)
+
+
+def _last_event(s):
+    return max((ts for ts, _, _ in s["events"]), default=None)
+
+
+def _is_quiet(s):
+    last = _last_event(s)
+    return last is None or (datetime.now(timezone.utc) - last).total_seconds() >= SESSION_QUIET_SECS
+
+
+def _generate_in_background(s):
+    try:
+        summary = _generate_summary(s.get("synopsis"), s.get("last_assistant"), s.get("user_prompts"))
+        if not summary:
+            return  # not cached, so a later poll retries it
         with _summary_lock:
-            cache[key] = {"summary": summary}
-            _save_summary_cache()
-        return summary
-    # LLM unavailable: show a truncated fallback but DON'T cache it, so the
-    # real summary gets generated on a later load instead of being frozen in.
-    return _naive_summary(s.get("synopsis") or s.get("last_assistant") or "(untitled session)")
+            if _is_quiet(s):
+                _load_summary_cache()[s["id"]] = {"summary": summary}
+                _live_summaries.pop(s["id"], None)
+                _save_summary_cache()
+            else:
+                _live_summaries[s["id"]] = (_last_event(s), summary, datetime.now(timezone.utc))
+    finally:
+        with _summary_lock:
+            _inflight.discard(s["id"])
+
+
+def _queue(s):
+    with _summary_lock:
+        if s["id"] in _inflight:
+            return
+        _inflight.add(s["id"])
+    _summary_pool.submit(_generate_in_background, s)
 
 
 def summarize_sessions(sessions):
-    """Fill in missing summaries concurrently (cached ones return instantly).
+    """Return ({id: summary}, pending) without ever waiting on the LLM.
 
-    Every uncached session gets exactly ONE generation attempt per request,
-    and that result is reused for the returned map. Calling session_summary
-    a second time to build the map looks free - a cached session is just a
-    dict lookup - but an attempt that FAILED is deliberately not cached, so
-    the second pass re-ran it, one session at a time. On a loaded machine,
-    where every headless call burns its full timeout, that turned 8 parallel
-    30s calls into 8 parallel plus 8 sequential: a four-minute page load.
-    A failed attempt still isn't cached, so a later load retries it - just
-    not twice within this one.
+    Persisted summaries are keyed on session id alone and never regenerated:
+    a session that spans multiple days must show the same name everywhere it
+    appears. Only quiet sessions get persisted, so that name reflects the
+    whole session rather than its opening minutes. Anything missing is queued
+    for background generation and reported as pending; a failed attempt is
+    never cached, so the next poll simply queues it again.
     """
     cache = _load_summary_cache()
+    now = datetime.now(timezone.utc)
     summaries = {}
-    need = []
+    pending = False
     for s in sessions:
         cached = cache.get(s["id"])
         if cached:
             summaries[s["id"]] = cached["summary"]
-        else:
-            need.append(s)
-    if need:
-        with ThreadPoolExecutor(max_workers=min(8, len(need))) as pool:
-            for s, summary in zip(need, pool.map(session_summary, need)):
-                summaries[s["id"]] = summary
-    return summaries
+            continue
+        live = _live_summaries.get(s["id"])
+        if live:
+            summaries[s["id"]] = live[1]
+            stale = live[0] != _last_event(s) and (now - live[2]).total_seconds() >= SESSION_RESUMMARIZE_SECS
+            if _is_quiet(s) or stale:
+                _queue(s)  # refresh quietly; the live name is good enough to show meanwhile
+            continue
+        pending = True
+        _queue(s)
+    return summaries, pending
 
 
 def _scan_and_cache(files, parse_fn):
@@ -871,27 +901,45 @@ def _generate_day_summary(entries):
     return _call_claude_headless(prompt, max_words=40, model=DAY_SUMMARY_MODEL) or None
 
 
-def day_summary_for(day_str, entries, is_past):
+_day_inflight = set()
+
+
+def _generate_day_in_background(day_str, entries, digest):
+    try:
+        text = _generate_day_summary(entries)
+        if text:
+            with _summary_lock:
+                cache = _load_day_summaries()
+                if not cache.get(day_str, {}).get("edited"):  # a manual edit made meanwhile wins
+                    cache[day_str] = {"text": text, "digest": digest, "edited": False}
+                    _save_day_summaries()
+    finally:
+        with _summary_lock:
+            _day_inflight.discard(day_str)
+
+
+def day_summary_for(day_str, entries, is_past, sessions_pending=False):
+    """Return (text, pending). Generation runs in the background, like the
+    session summaries, and never on a day whose session names are still
+    placeholders - the result would be written from the wrong inputs."""
     cache = _load_day_summaries()
     cached = cache.get(day_str)
+    text = cached["text"] if cached else ""
     if cached and cached.get("edited"):
-        return cached["text"]
-    if not is_past:
+        return text, False
+    if not is_past or not entries or sessions_pending:
         # Don't auto-summarize a day that's still being written.
-        return cached["text"] if cached else ""
-    if not entries:
-        return cached["text"] if cached else ""
+        return text, False
     digest = _day_summary_digest(entries)
     if cached and cached.get("digest") == digest:
-        return cached["text"]
-    text = _generate_day_summary(entries)
-    if text:
-        cache[day_str] = {"text": text, "digest": digest, "edited": False}
-        _save_day_summaries()
-        return text
-    # LLM unavailable: show a plain join for now but DON'T cache it, so a real
-    # summary gets generated on a later load instead of being frozen in.
-    return _naive_summary("; ".join(e["summary"] for e in entries))
+        return text, False
+    with _summary_lock:
+        queue = day_str not in _day_inflight
+        _day_inflight.add(day_str)
+    if queue:
+        _summary_pool.submit(_generate_day_in_background, day_str, entries, digest)
+    # Show the old text (or a plain join) meanwhile, never persisted.
+    return text or _naive_summary("; ".join(e["summary"] for e in entries)), True
 
 
 def set_day_summary(day_str, text):
@@ -905,7 +953,7 @@ def regenerate_day_summary(day_str):
     """Force a fresh LLM call regardless of any cached or manually-edited
     text, then store the result as auto-generated (not edited) so future
     digest changes can still refresh it normally."""
-    entries, _ = _compute_day(date.fromisoformat(day_str))
+    entries, *_ = _compute_day(date.fromisoformat(day_str))
     if not entries:
         raise ValueError("no sessions that day to summarize")
     text = _generate_day_summary(entries)
@@ -932,17 +980,22 @@ def log_for_date(day_str):
     cache = _load_day_log_cache() if is_past else {}
     cached = cache.get(day_str)
 
+    pending = False
     if cached:
         entries, totals = cached["entries"], cached["totals"]
     else:
-        entries, totals = _compute_day(target)
-        if is_past:
+        entries, totals, pending, settled = _compute_day(target)
+        if is_past and settled:
             cache[day_str] = {"entries": entries, "totals": totals}
             _save_day_log_cache()
 
+    # A day summary written from placeholder session names would be frozen
+    # in under a digest that never matches again, so wait for them first.
+    day_summary, day_pending = day_summary_for(day_str, entries, is_past, sessions_pending=pending)
     return {
         "date": day_str,
-        "day_summary": day_summary_for(day_str, entries, is_past),
+        "day_summary": day_summary,
+        "pending": pending or day_pending,
         "entries": entries,
         "totals": totals,
         "projects_dir": str(PROJECTS_DIR),
@@ -965,7 +1018,11 @@ def _compute_day(target):
             continue
         day_sessions.append((s, times, user_turns, assistant_turns, tokens))
 
-    summaries = summarize_sessions([s for s, *_ in day_sessions])
+    summaries, pending = summarize_sessions([s for s, *_ in day_sessions])
+    # Settled = every name on this day is a persisted, final one, so the day
+    # can be frozen to disk. False while anything is pending or still live.
+    cache = _load_summary_cache()
+    settled = not pending and all(s["id"] in cache for s, *_ in day_sessions)
 
     entries = []
     for s, times, user_turns, assistant_turns, tokens in day_sessions:
@@ -993,7 +1050,7 @@ def _compute_day(target):
         "assistant_turns": sum(e["assistant_turns"] for e in entries),
         "tokens": sum(e["tokens"] for e in entries),
     }
-    return entries, totals
+    return entries, totals, pending, settled
 
 
 # --------------------------------------------------------------------------- #

@@ -1462,6 +1462,22 @@ async function loadLog() {
   }
 }
 
+// Summaries are generated in the background, so /api/log answers at once with
+// titles standing in and `pending: true`. Re-poll until they land - but skip a
+// round while the user is typing in the day summary, since a reload rebuilds
+// the pane under them, and stop once they've moved to another date.
+let pendingPoll = null;
+function schedulePendingPoll(data) {
+  clearTimeout(pendingPoll);
+  if (!data.pending) return;
+  const forDate = data.date;
+  pendingPoll = setTimeout(function tick() {
+    if (iso(logDate) !== forDate) return;
+    if ($("#logOut").contains(document.activeElement)) { pendingPoll = setTimeout(tick, 4000); return; }
+    loadLog();
+  }, 4000);
+}
+
 async function loadLogOnce() {
   $("#datePick").value = iso(logDate);
   const out = $("#logOut"); out.innerHTML = "";
@@ -1473,6 +1489,7 @@ async function loadLogOnce() {
     out.innerHTML = '<div class="log-empty">Run this through <code>python3 server.py</code> to read your Claude Code sessions.</div>';
     return;
   }
+  schedulePendingPoll(data);
 
   const d = new Date(logDate);
   const stamp = el("div", "daystamp");
