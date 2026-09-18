@@ -1,6 +1,7 @@
 # Logbook — project context
 
-A lightweight personal command deck: a **backlog**, a place for **higher-level ideas**, and a
+A lightweight personal command deck: a **backlog**, a place for **higher-level ideas**, a **content** list (article,
+podcast and video topics), and a
 **daily log** that builds itself from Claude Code agent sessions. No dependencies, no build step —
 Python 3 standard library only.
 
@@ -54,7 +55,8 @@ logbook/
 ## How it works
 
 - **Board** (`data/board.json`): `tasks[]` each have `id`, `title`, `status`
-  (`backlog|doing|done`); `ideas[]` have `id`, `title`. The UI autosaves via `POST /api/board`.
+  (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists; content
+  never enters Today's Focus and skips GitHub issue matching. The UI autosaves via `POST /api/board`.
   An agent or cron job can append items to this file directly (preserve the `rev` field).
 - **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
   current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
