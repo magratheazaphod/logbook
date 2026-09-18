@@ -75,6 +75,10 @@ logbook/
 - **Daily log**: `GET /api/log?date=YYYY-MM-DD` reads `~/.claude/projects/**/*.jsonl`, groups that
   day's sessions, and returns start/end times, project, git branch, prompt counts, and a title
   (Claude Code's own session summary, falling back to the first user prompt). Rendered as a ledger.
+- **Theme**: light and dark palettes are `:root` tokens in `index.html`; dark follows the OS
+  unless the header pill pins light or dark (`data-theme` on `<html>`, saved in localStorage
+  and applied by an inline script before first paint). New colours must be tokens with a value
+  in both the `prefers-color-scheme` block and the `[data-theme="dark"]` block.
 - **App icon**: a log seen end-on, bespectacled, reading a book. `icons/make-icons.py` holds
   the art as one string and emits four variants — a rounded tile (manifest), full-bleed (the
   Dock/iOS tile, whose corners the OS masks itself, so transparency would go black), a maskable

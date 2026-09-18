@@ -52,6 +52,10 @@ the mechanical layout, run instructions, and file responsibilities.
 
 - **Rose/brick color theme** (`--paper:#F1E6E4`, `--accent:#B23A2E`) — explicit aesthetic
   preference, not a default.
+- **Dark mode** (September 17, 2026) - a warm brown-black counterpart of the rose theme,
+  following the OS by default. A header pill cycles auto/light/dark; the choice is per browser
+  (localStorage), not board data. Every colour in `index.html` is a `:root` token so both
+  themes stay in sync - don't add raw hex values in rules.
 - **Daily log grouped by agent/project session, collapsible, with token counts, filtering out
   sub-1000-token "drive-by" sessions** — keeps the log readable; threshold was tuned down from
   5000 to 1000 tokens per explicit feedback (5000 hid too much real work).
