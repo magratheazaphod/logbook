@@ -55,8 +55,10 @@ logbook/
 ## How it works
 
 - **Board** (`data/board.json`): `tasks[]` each have `id`, `title`, `status`
-  (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists; content
-  never enters Today's Focus and skips GitHub issue matching. The UI autosaves via `POST /api/board`.
+  (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists. Content
+  items skip GitHub issue matching and carry an optional `postDate`: they aren't copied into
+  `dayPlans` but are derived into the Focus panel's "Content" block under Ideas on that date
+  (today's also lists overdue, unfinished pieces). Dropping a card there dates it for today. The UI autosaves via `POST /api/board`.
   An agent or cron job can append items to this file directly (preserve the `rev` field).
 - **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
   current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
