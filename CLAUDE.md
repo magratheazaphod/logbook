@@ -30,6 +30,10 @@ the interactive shell's (including `~/.local/bin` for `claude`) — `server.py` 
 which would silently break headless day-summary generation ("Not logged in" is the symptom of
 this env gap specifically).
 
+The plist must set `ProcessType` to `Interactive`. With no `ProcessType`, launchd applies
+"light resource limits" that throttle CPU and I/O: the cold transcript scan used 3.5s of CPU
+but took about 124s of wall time, and every request that parsed transcripts crawled.
+
 ## Layout
 
 ```
