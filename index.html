@@ -450,6 +450,10 @@
     font-weight:600;letter-spacing:.12em;text-transform:uppercase;line-height:14px;
   }
   @keyframes genpulse{50%{border-color:transparent}}
+  /* A session whose name is still being generated: its first prompt stands in, faded and pulsing. */
+  .sess-title.naming{color:var(--muted);font-style:italic;animation:namepulse 1.6s ease-in-out infinite}
+  @keyframes namepulse{50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.sess-title.naming{animation:none}}
   @media (prefers-reduced-motion:reduce){.day-summary-row.generating{animation:none}}
 
   /* the ledger rail */
@@ -1625,9 +1629,9 @@ async function loadLogOnce() {
 
   const summaryDate = iso(logDate);
   const summaryRow = el("div", "day-summary-row");
-  if (data.pending) {
+  if (data.day_pending) {
     summaryRow.classList.add("generating");
-    summaryRow.title = "Claude is still writing session and day summaries - this refreshes itself";
+    summaryRow.title = "Claude is writing this day's summary - this refreshes itself";
   }
   const summaryEl = el("div", "day-summary");
   summaryEl.contentEditable = "true";
@@ -1733,6 +1737,10 @@ async function loadLogOnce() {
       const line = el("div", "sess-line");
       const clk = el("span", "clock"); clk.textContent = `${en.start}–${en.end}`;
       const title = el("span", "sess-title"); title.textContent = oneLine(en.summary || en.title); title.title = en.title;
+      if (data.sessions_pending && !en.summary) {
+        title.classList.add("naming");
+        title.title = "Claude is naming this session - the first prompt stands in meanwhile\n\n" + en.title;
+      }
       const turns = el("span", "pill turns"); turns.textContent = `${en.user_turns} prompt${en.user_turns!==1?"s":""}`;
       const tok = el("span", "pill tokens"); tok.textContent = fmtTokens(en.tokens || 0);
       const parts = [clk, title];

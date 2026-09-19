@@ -996,7 +996,9 @@ def log_for_date(day_str):
     return {
         "date": day_str,
         "day_summary": day_summary,
-        "pending": pending or day_pending,
+        "pending": pending or day_pending,   # UI keeps polling while true
+        "sessions_pending": pending,         # some session names still being written
+        "day_pending": day_pending,          # the day's one-sentence summary is being written
         "entries": entries,
         "totals": totals,
         "projects_dir": str(PROJECTS_DIR),
