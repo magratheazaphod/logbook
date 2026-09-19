@@ -100,3 +100,7 @@ one.
 - Change the port with `PORT=9000 python3 server.py`.
 - Claude Code's transcript format can shift between versions; the parser is defensive and skips
   anything it doesn't recognize, so a format change degrades gracefully rather than breaking.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
