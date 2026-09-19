@@ -1033,6 +1033,7 @@ def _compute_day(target):
             "id": s["id"],
             "title": s["title"],
             "summary": summaries.get(s["id"], s["title"]),
+            "naming": s["id"] not in summaries,   # summary is the title standing in
             "project": s["project"],
             "project_short": s["project_short"],
             "branches": s["branches"],

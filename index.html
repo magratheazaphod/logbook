@@ -1595,6 +1595,7 @@ async function loadLog() {
 // round while the user is typing in the day summary, since a reload rebuilds
 // the pane under them, and stop once they've moved to another date.
 let pendingPoll = null;
+let lastLogRaw = null;  // last /api/log body rendered, to skip no-op re-renders
 function schedulePendingPoll(data) {
   clearTimeout(pendingPoll);
   if (!data.pending) return;
@@ -1608,16 +1609,24 @@ function schedulePendingPoll(data) {
 
 async function loadLogOnce() {
   $("#datePick").value = iso(logDate);
-  const out = $("#logOut"); out.innerHTML = "";
-  let data;
+  const out = $("#logOut");
+  let data, raw;
   try {
     const r = await fetch("/api/log?date=" + iso(logDate));
-    data = await r.json();
+    raw = await r.text();
+    data = JSON.parse(raw);
   } catch (e) {
+    lastLogRaw = null;
     out.innerHTML = '<div class="log-empty">Run this through <code>python3 server.py</code> to read your Claude Code sessions.</div>';
     return;
   }
   schedulePendingPoll(data);
+  // Polls mostly come back unchanged; leave the pane alone then. When
+  // something did change, clear only now that the new data is in hand, so
+  // the swap is a single paint rather than a blank flash.
+  if (raw === lastLogRaw) return;
+  lastLogRaw = raw;
+  out.innerHTML = "";
 
   const d = new Date(logDate);
   const stamp = el("div", "daystamp");
@@ -1737,7 +1746,7 @@ async function loadLogOnce() {
       const line = el("div", "sess-line");
       const clk = el("span", "clock"); clk.textContent = `${en.start}–${en.end}`;
       const title = el("span", "sess-title"); title.textContent = oneLine(en.summary || en.title); title.title = en.title;
-      if (data.sessions_pending && !en.summary) {
+      if (en.naming) {
         title.classList.add("naming");
         title.title = "Claude is naming this session - the first prompt stands in meanwhile\n\n" + en.title;
       }
