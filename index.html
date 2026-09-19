@@ -438,6 +438,19 @@
   .day-summary-regen:hover{color:var(--accent);background:var(--card)}
   .day-summary-regen:disabled{opacity:1;cursor:default;animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  /* While /api/log reports pending, the summary row wears a dashed, pulsing
+     GENERATING frame so the re-polls read as work in progress, not flicker. */
+  .day-summary-row.generating{
+    position:relative;border:1.5px dashed var(--accent);border-radius:8px;
+    padding:10px 8px 6px 10px;margin-top:8px;animation:genpulse 1.6s ease-in-out infinite;
+  }
+  .day-summary-row.generating::before{
+    content:"Generating\2026";position:absolute;top:-8px;left:10px;padding:0 6px;
+    background:var(--paper);color:var(--accent);font-family:var(--mono);font-size:10px;
+    font-weight:600;letter-spacing:.12em;text-transform:uppercase;line-height:14px;
+  }
+  @keyframes genpulse{50%{border-color:transparent}}
+  @media (prefers-reduced-motion:reduce){.day-summary-row.generating{animation:none}}
 
   /* the ledger rail */
   .ledger{position:relative;margin-left:6px;padding-left:26px}
@@ -1612,6 +1625,10 @@ async function loadLogOnce() {
 
   const summaryDate = iso(logDate);
   const summaryRow = el("div", "day-summary-row");
+  if (data.pending) {
+    summaryRow.classList.add("generating");
+    summaryRow.title = "Claude is still writing session and day summaries - this refreshes itself";
+  }
   const summaryEl = el("div", "day-summary");
   summaryEl.contentEditable = "true";
   summaryEl.spellcheck = false;
