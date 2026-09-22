@@ -607,6 +607,47 @@ def _call_claude_headless(prompt, max_words, timeout=30, model="claude-haiku-4-5
     return None
 
 
+DRAFT_REVIEW_MODEL = "claude-sonnet-5"
+
+
+def review_draft(text):
+    """Editorial suggestions for a content draft, as a list of
+    {quote, replacement, reason}. `quote` is an exact span of the draft so the
+    UI can find and swap it; an empty replacement means "cut this"."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    prompt = (
+        INTERNAL_MARKER + " "
+        "You are a sharp, sympathetic editor reviewing a draft for an article, podcast "
+        "or video. Suggest up to 8 concrete edits that most improve clarity, flow, "
+        "concision and punch. Keep the author's voice; don't rewrite everything. "
+        "Reply with ONLY a JSON array, no prose, no code fence. Each element: "
+        '{"quote": exact verbatim substring of the draft (short, unique, copied '
+        'character-for-character), "replacement": the new text (\"\" to delete), '
+        '"reason": one short sentence}. If the draft is fine, reply [].\n\n'
+        "DRAFT:\n" + text
+    )
+    out = _call_claude_headless(prompt, max_words=100_000, timeout=180,
+                                model=DRAFT_REVIEW_MODEL)
+    if out is None:
+        raise ValueError("review failed")
+    start, end = out.find("["), out.rfind("]")
+    try:
+        items = json.loads(out[start:end + 1])
+    except Exception:
+        raise ValueError("review came back unreadable")
+    clean = []
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        q = str(it.get("quote", ""))
+        if q and q in text:
+            clean.append({"quote": q, "replacement": str(it.get("replacement", "")),
+                          "reason": str(it.get("reason", ""))})
+    return clean
+
+
 def _sample_evenly(items, limit):
     """Up to `limit` items spread evenly across the list, order preserved."""
     if len(items) <= limit:
@@ -1373,6 +1414,11 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/handoff/draft":
             try:
                 self._send(200, save_draft(data.get("id"), data.get("text")))
+            except Exception as e:
+                self._send(400, {"error": str(e)})
+        elif parsed.path == "/api/draft/review":
+            try:
+                self._send(200, {"suggestions": review_draft(data.get("text"))})
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/match-issue":

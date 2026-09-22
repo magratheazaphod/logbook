@@ -349,6 +349,20 @@
   .doc-editor{flex:1;min-height:0;width:100%;box-sizing:border-box;border:0;resize:none;outline:none;
     padding:20px 24px 28px;background:var(--card);color:var(--ink);
     font-family:var(--mono);font-size:13px;line-height:1.6}
+  /* Review suggestions dock under the draft editor and scroll on their own. */
+  .review-panel{flex:none;max-height:40%;overflow:auto;border-top:1px solid var(--line-strong);
+    background:var(--paper);padding:10px 16px 14px}
+  .review-panel .rp-head{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);
+    font-size:11px;color:var(--faint);margin-bottom:8px}
+  .review-panel .rp-head span{flex:1}
+  .sugg{background:var(--card);border:1px solid var(--line);border-radius:8px;
+    padding:9px 12px;margin:0 0 8px;font-size:13px}
+  .sugg .why{color:var(--ink);margin-bottom:6px}
+  .sugg .del-txt{color:var(--muted);text-decoration:line-through;font-family:var(--mono);
+    font-size:12px;white-space:pre-wrap}
+  .sugg .ins-txt{color:var(--accent-ink);font-family:var(--mono);font-size:12px;white-space:pre-wrap;margin-top:3px}
+  .sugg .acts{display:flex;gap:6px;margin-top:8px}
+  .sugg.stale{opacity:.55}
   .doc-body.is-image{padding:16px;display:flex;justify-content:center;background:var(--paper)}
   .doc-body.is-image img{max-width:100%;max-height:calc(85vh - 120px);
     object-fit:contain;border:1px solid var(--line);border-radius:6px;background:var(--card)}
@@ -1188,6 +1202,9 @@ function editDraft(h, doc, sheet, head, body, meta) {
   ta.className = "doc-editor"; ta.value = doc.text || ""; ta.spellcheck = true;
   ta.setAttribute("aria-label", "Draft text");
   const mode = el("button", "doc-mode"); mode.textContent = "preview";
+  const review = el("button", "doc-mode"); review.textContent = "review";
+  review.title = "Ask Claude for suggested edits";
+  head.insertBefore(review, head.lastChild);
   head.insertBefore(mode, head.lastChild);
   body.replaceWith(ta);
   ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -1212,6 +1229,7 @@ function editDraft(h, doc, sheet, head, body, meta) {
     if (e.key === "Tab") { e.preventDefault(); ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); }
     if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); push(); }
   });
+  review.onclick = () => reviewDraft(ta, sheet, review);
   mode.onclick = () => {
     if (ta.isConnected) {
       push();
@@ -1223,6 +1241,59 @@ function editDraft(h, doc, sheet, head, body, meta) {
     }
   };
   return push;
+}
+
+// PROTOTYPE: Claude reads the draft and proposes span-level edits, listed in
+// a panel under the editor. Accept swaps the quoted span in place (and the
+// normal autosave picks it up); dismiss just drops the card.
+async function reviewDraft(ta, sheet, btn) {
+  let panel = sheet.querySelector(".review-panel");
+  if (!panel) { panel = el("div", "review-panel"); sheet.appendChild(panel); }
+  panel.innerHTML = "";
+  const head = el("div", "rp-head");
+  const label = el("span"); label.textContent = "reviewing… (can take a minute)";
+  const close = el("button", "doc-close"); close.textContent = "✕";
+  close.setAttribute("aria-label", "Close suggestions");
+  close.onclick = () => panel.remove();
+  head.append(label, close); panel.appendChild(head);
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/draft/review", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: ta.value }),
+    });
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || "review failed");
+    const list = res.suggestions || [];
+    const count = () => {
+      const n = panel.querySelectorAll(".sugg").length;
+      label.textContent = n ? `${n} suggestion${n === 1 ? "" : "s"}` : "all suggestions handled";
+    };
+    if (!list.length) label.textContent = "no suggestions - looks good";
+    for (const sg of list) {
+      const card = el("div", "sugg");
+      const why = el("div", "why"); why.textContent = sg.reason;
+      const del = el("div", "del-txt"); del.textContent = sg.quote;
+      card.append(why, del);
+      if (sg.replacement) { const ins = el("div", "ins-txt"); ins.textContent = sg.replacement; card.appendChild(ins); }
+      const acts = el("div", "acts");
+      const ok = el("button", "doc-mode"); ok.textContent = "accept";
+      const no = el("button", "doc-mode"); no.textContent = "dismiss";
+      ok.onclick = () => {
+        const at = ta.value.indexOf(sg.quote);
+        if (at < 0) { card.classList.add("stale"); why.textContent = "The text has changed - can't apply this one."; ok.remove(); return; }
+        ta.setRangeText(sg.replacement, at, at + sg.quote.length, "select");
+        ta.dispatchEvent(new Event("input"));   // rides the normal autosave
+        card.remove(); count();
+      };
+      no.onclick = () => { card.remove(); count(); };
+      acts.append(ok, no); card.appendChild(acts);
+      panel.appendChild(card);
+    }
+    if (list.length) count();
+  } catch (err) {
+    label.textContent = "review failed: " + err.message;
+  } finally { btn.disabled = false; }
 }
 
 // A small Markdown subset, enough for handoff docs — headings, lists (incl.
