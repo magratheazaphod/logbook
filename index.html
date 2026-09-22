@@ -276,6 +276,7 @@
   }
   .handoff-pill::before{content:"❧";color:var(--accent);opacity:.8}
   .handoff-pill.is-image::before{content:"◨"}
+  .handoff-pill.is-draft::before{content:"✎"}
   .handoff-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .handoff-pill:hover{border-color:var(--accent);color:var(--accent-ink)}
   li.row.file-over{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft)}
@@ -340,6 +341,14 @@
   .doc-body .task-box{color:var(--accent);font-family:var(--mono)}
   /* A dropped image fills the sheet, on the paper ground so a transparent
      PNG reads as artwork rather than as a hole in the overlay. */
+  /* A draft opens as a plain-text editor; the head toggles a rendered preview. */
+  .doc-sheet.is-draft{height:calc(100vh - 80px)}
+  .doc-mode{border:1px solid var(--line-strong);background:var(--card);color:var(--muted);
+    font-family:var(--mono);font-size:11px;border-radius:999px;padding:2px 10px;cursor:pointer;flex:none}
+  .doc-mode:hover{color:var(--accent-ink);border-color:var(--accent)}
+  .doc-editor{flex:1;min-height:0;width:100%;box-sizing:border-box;border:0;resize:none;outline:none;
+    padding:20px 24px 28px;background:var(--card);color:var(--ink);
+    font-family:var(--mono);font-size:13px;line-height:1.6}
   .doc-body.is-image{padding:16px;display:flex;justify-content:center;background:var(--paper)}
   .doc-body.is-image img{max-width:100%;max-height:calc(85vh - 120px);
     object-fit:contain;border:1px solid var(--line);border-radius:6px;background:var(--card)}
@@ -391,6 +400,12 @@
     font:inherit;color:var(--muted);background:transparent;border:1px solid var(--line);
     border-radius:999px;padding:1px 6px;color-scheme:light dark;
   }
+  .content-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .draft-add{
+    margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--faint);cursor:pointer;
+    background:transparent;border:1px dashed var(--line-strong);border-radius:999px;padding:1px 8px;
+  }
+  .draft-add:hover{color:var(--accent-ink);border-color:var(--accent)}
   .post-date.overdue, .post-date.overdue input{color:var(--accent);border-color:var(--accent-soft-line)}
   .tf-empty{
     border:1px dashed var(--line-strong);border-radius:var(--radius);
@@ -921,13 +936,15 @@ function handoffRow(item, onChange) {
   if (!item.handoffs?.length) return null;
   const row = el("div", "handoff-row");
   for (const h of item.handoffs) {
-    const pill = el("button", "handoff-pill" + (h.kind === "image" ? " is-image" : ""));
+    const pill = el("button", "handoff-pill" + (h.kind === "image" ? " is-image"
+                                              : h.kind === "draft" ? " is-draft" : ""));
     const name = el("span"); name.textContent = h.name;
     pill.appendChild(name);
     pill.title = `Open ${h.name}${h.added ? " — attached " + h.added.slice(0, 10) : ""}`;
     pill.onclick = e => { e.stopPropagation(); openHandoff(h); };
     const unlink = el("button", "issue-unlink"); unlink.textContent = "✕";
-    unlink.title = "Detach this handoff";
+    unlink.title = h.kind === "draft" ? "Detach this draft (its text stays in data/handoffs)"
+                                      : "Detach this handoff";
     unlink.setAttribute("aria-label", "Detach handoff");
     unlink.onclick = e => {
       e.stopPropagation();
@@ -1127,7 +1144,9 @@ function openHandoff(h) {
   sheet.append(head, body);
   overlay.appendChild(sheet);
 
+  let flushDraft = () => {};
   const dismiss = () => {
+    flushDraft();
     overlay.remove();
     document.removeEventListener("keydown", onKey);
   };
@@ -1154,10 +1173,56 @@ function openHandoff(h) {
         body.appendChild(img);
         return;
       }
+      if (doc.kind === "draft") { flushDraft = editDraft(h, doc, sheet, head, body, meta); return; }
       body.innerHTML = renderMarkdown(doc.text || "");
       for (const a of body.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener"; }
     })
     .catch(() => { body.textContent = "Couldn't read this handoff."; });
+}
+
+// Turns an open draft's sheet into an editor that autosaves as you type.
+// Returns a flush function the overlay calls on close so no keystroke is lost.
+function editDraft(h, doc, sheet, head, body, meta) {
+  sheet.classList.add("is-draft");
+  const ta = document.createElement("textarea");
+  ta.className = "doc-editor"; ta.value = doc.text || ""; ta.spellcheck = true;
+  ta.setAttribute("aria-label", "Draft text");
+  const mode = el("button", "doc-mode"); mode.textContent = "preview";
+  head.insertBefore(mode, head.lastChild);
+  body.replaceWith(ta);
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+
+  let saved = ta.value, timer = null;
+  meta.textContent = "draft"; meta.title = "";
+  const push = () => {
+    clearTimeout(timer); timer = null;
+    const text = ta.value;
+    if (text === saved) return;
+    meta.textContent = "saving…";
+    fetch("/api/handoff/draft", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: h.id, text }), keepalive: true,
+    }).then(r => r.ok ? r.json() : Promise.reject())
+      .then(res => { saved = text; meta.textContent = "saved " + res.saved.slice(11, 16); })
+      .catch(() => { meta.textContent = "not saved"; flashNote("draft didn't save", true); });
+  };
+  ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(push, 800); });
+  // Esc belongs to the overlay (close), which flushes; keep Tab in the text.
+  ta.addEventListener("keydown", e => {
+    if (e.key === "Tab") { e.preventDefault(); ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); }
+    if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); push(); }
+  });
+  mode.onclick = () => {
+    if (ta.isConnected) {
+      push();
+      body.innerHTML = renderMarkdown(ta.value);
+      for (const a of body.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener"; }
+      ta.replaceWith(body); mode.textContent = "edit";
+    } else {
+      body.replaceWith(ta); mode.textContent = "preview"; ta.focus();
+    }
+  };
+  return push;
 }
 
 // A small Markdown subset, enough for handoff docs — headings, lists (incl.
@@ -1367,6 +1432,29 @@ function postDateRow(item, onChange) {
   return wrap;
 }
 
+// A content card can hold a draft written inside Logbook itself: a handoff of
+// kind "draft" with no file behind it, edited in the doc overlay.
+function draftButton(item) {
+  const b = el("button", "draft-add"); b.textContent = "+ draft";
+  b.title = "Start a draft for this piece";
+  b.onclick = async e => {
+    e.stopPropagation();
+    try {
+      const r = await fetch("/api/handoff", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "draft", kind: "draft", text: `# ${item.title}\n\n` }),
+      });
+      if (!r.ok) throw new Error();
+      const rec = await r.json();
+      (item.handoffs ||= []).push(rec);
+      item.updated = new Date().toISOString();
+      syncHandoffs(item); refreshAfterHandoff(); save();
+      openHandoff(rec);
+    } catch { flashNote("couldn't start a draft", true); }
+  };
+  return b;
+}
+
 function ideaRow(idea, listId) {
   const { onChange } = DND[listId];
   const li = el("li", "row status-" + (idea.status || "backlog"));
@@ -1400,7 +1488,12 @@ function ideaRow(idea, listId) {
   if (issueRow) body.appendChild(issueRow);
   const hoRow = handoffRow(idea, onChange);
   if (hoRow) body.appendChild(hoRow);
-  if (listId === "content") body.appendChild(postDateRow(idea, onChange));
+  if (listId === "content") {
+    const meta = el("div", "content-meta");
+    meta.appendChild(postDateRow(idea, onChange));
+    if (!idea.handoffs?.some(h => h.kind === "draft")) meta.appendChild(draftButton(idea));
+    body.appendChild(meta);
+  }
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
   del.onclick = () => deleteItem(idea, listId);
   const top = toTopButton(idea, listId);
