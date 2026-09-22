@@ -1090,6 +1090,9 @@ def add_handoff(name, path, text, kind="doc", data=None, mime=""):
     name = (name or "handoff.md").strip() or "handoff.md"
     if kind == "image":
         return _add_image_handoff(name, path, data, mime)
+    kind = "draft" if kind == "draft" else "doc"
+    if kind == "draft":
+        path = ""   # a draft is written inside Logbook; the snapshot *is* the file
     text = text or ""
     if len(text.encode("utf-8")) > HANDOFF_MAX_BYTES:
         raise ValueError("file too large")
@@ -1099,12 +1102,28 @@ def add_handoff(name, path, text, kind="doc", data=None, mime=""):
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
     (HANDOFF_DIR / f"{hid}.md").write_text(text, encoding="utf-8")
 
-    rec = {"id": hid, "name": name, "path": path, "kind": "doc",
+    rec = {"id": hid, "name": name, "path": path, "kind": kind,
            "added": datetime.now().astimezone().isoformat(timespec="seconds")}
     idx = _load_handoff_index()
     idx[hid] = rec
     _save_handoff_index(idx)
-    return {"id": hid, "name": name, "kind": "doc", "added": rec["added"]}
+    return {"id": hid, "name": name, "kind": kind, "added": rec["added"]}
+
+
+def save_draft(hid, text):
+    """Overwrite a draft's text. Only drafts are writable - a dropped doc tracks
+    a real file on disk that Logbook must never edit behind the user's back."""
+    rec = _load_handoff_index().get(str(hid or ""))
+    if not rec or rec.get("kind") != "draft":
+        raise ValueError("not a draft")
+    text = text or ""
+    if len(text.encode("utf-8")) > HANDOFF_MAX_BYTES:
+        raise ValueError("draft too large")
+    target = HANDOFF_DIR / f"{rec['id']}.md"
+    tmp = target.with_suffix(".md.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, target)
+    return {"ok": True, "saved": datetime.now().astimezone().isoformat(timespec="seconds")}
 
 
 def _keep_path(path):
@@ -1196,7 +1215,7 @@ def read_handoff(hid):
     except Exception:
         snap = ""
     return {"id": rec["id"], "name": rec["name"], "path": rec.get("path", ""),
-            "added": rec.get("added", ""), "kind": "doc",
+            "added": rec.get("added", ""), "kind": rec.get("kind", "doc"),
             "source": "snapshot" if rec.get("path") else "saved", "text": snap}
 
 
@@ -1349,6 +1368,11 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("name"), data.get("path"), data.get("text"),
                     kind=data.get("kind", "doc"), data=data.get("data"),
                     mime=data.get("mime", "")))
+            except Exception as e:
+                self._send(400, {"error": str(e)})
+        elif parsed.path == "/api/handoff/draft":
+            try:
+                self._send(200, save_draft(data.get("id"), data.get("text")))
             except Exception as e:
                 self._send(400, {"error": str(e)})
         elif parsed.path == "/api/match-issue":

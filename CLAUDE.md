@@ -77,6 +77,11 @@ logbook/
   (`kind:"image"`), snapshot as bytes to `data/handoffs/<id>.<ext>`, and are served by
   `GET /api/handoff/image?id=` - `GET /api/handoff` returns only their caption metadata.
   Clicking such a pill shows the picture in the overlay instead of rendered Markdown.
+  Content cards also get a **"+ draft"** button: it creates a `kind:"draft"` handoff with no
+  file behind it (the snapshot is the only copy) and opens it in the overlay as a textarea
+  editor with a preview toggle. Edits autosave (debounced, plus on close/Cmd-S) via
+  `POST /api/handoff/draft`, which refuses anything that isn't a draft, so dropped docs that
+  track real files on disk are never written to.
   The current day's Focus rows take drops too; since a day plan stores whole *copies* of an
   item, an attach/detach on either copy is written to both (`syncHandoffs`). Past days render
   read-only and are excluded.
