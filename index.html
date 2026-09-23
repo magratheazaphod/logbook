@@ -1160,7 +1160,12 @@ function openHandoff(h) {
   };
   const onKey = ev => { if (ev.key === "Escape") dismiss(); };
   close.onclick = dismiss;
-  overlay.onclick = ev => { if (ev.target === overlay) dismiss(); };
+  // Close on the backdrop only when the whole click happened there. A text
+  // selection dragged out past the sheet's edge also fires a click on the
+  // backdrop, which used to close the doc mid-copy.
+  let pressedBackdrop = false;
+  overlay.onmousedown = ev => { pressedBackdrop = ev.target === overlay; };
+  overlay.onclick = ev => { if (pressedBackdrop && ev.target === overlay) dismiss(); };
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
 
