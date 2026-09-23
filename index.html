@@ -839,6 +839,14 @@ function handleDrop(e, targetListId, targetId) {
     onContentChange(); save();
     return;
   }
+  // A card due today shows only in the Focus panel, so dropping it on the
+  // Content list means "not today": clear the date to bring it back.
+  if (targetListId === "content" && fromListId === "content") {
+    const item = board.content.find(x => x.id === fromId);
+    if (item && contentDue(todayKey(), true).includes(item)) {
+      delete item.postDate; item.updated = new Date().toISOString();
+    }
+  }
   const kindOk = from.kind === to.kind || (CROSSABLE.has(fromListId) && CROSSABLE.has(targetListId));
   if (!kindOk) return;
   const fromIdx = from.arr.findIndex(x => x.id === fromId);
@@ -1511,15 +1519,20 @@ function addTask() {
 }
 // Content topics (articles, episodes, videos) reuse the idea card as-is; they
 // skip the GitHub issue lookup, which only makes sense for code work.
+// Anything due in today's Focus lives only there, so a card is never listed
+// twice; clearing its date (or dragging it back here) returns it to this list.
 function renderContent() {
   registerList("content", board.content, onContentChange, "content");
   const list = $("#contentList"); list.innerHTML = "";
-  $("#contentCount").textContent = board.content.length ? `${board.content.length}` : "";
-  if (!board.content.length) {
-    const e = el("div", "empty"); e.textContent = "Articles, episodes and videos to make.";
+  const dueNow = new Set(contentDue(todayKey(), true));
+  const shown = board.content.filter(c => !dueNow.has(c));
+  $("#contentCount").textContent = shown.length ? `${shown.length}` : "";
+  if (!shown.length) {
+    const e = el("div", "empty");
+    e.textContent = dueNow.size ? "Everything else is in today's Content." : "Articles, episodes and videos to make.";
     list.appendChild(e); return;
   }
-  for (const item of board.content) list.appendChild(ideaRow(item, "content"));
+  for (const item of shown) list.appendChild(ideaRow(item, "content"));
   applyBoardFilter();
 }
 // A content card also appears (as the same object, not a copy) in the focus
