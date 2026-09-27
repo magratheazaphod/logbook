@@ -28,7 +28,7 @@ signals and docs.
   with "Not logged in" - a stranger cannot reproduce this.
 - Prerequisites are undocumented as required vs optional: Claude Code
   transcripts (required), a logged-in `claude` CLI (summaries), `gh`
-  (issue match), macOS paths (Cowork).
+  (issue match - since removed; issue links are now manual), macOS paths (Cowork).
 - No tests, no CI. The transcript parser depends on an undocumented format and
   is the most likely thing to break for someone else.
 - No tags, changelog, or stated compatibility for `board.json` across upgrades.
@@ -56,7 +56,7 @@ signals and docs.
    for contributors.
 6. **[Done] README as a product page.** What it is, screenshots, features, a
    2-minute install, configuration, privacy ("binds to localhost; no network
-   calls except `claude`/`gh` calls you enable"), upgrading. Add
+   calls except the `claude` summary calls" - `gh` is no longer used), upgrading. Add
    `CHANGELOG.md`, tag `v1.0.0`, set the GitHub description and topics.
 7. **Portfolio hook.** A short case study on jesse-day.com linking the repo.
    No hosted demo: the app reads local transcripts, so a demo would be a
