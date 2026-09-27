@@ -123,10 +123,10 @@ logbook/
   `/favicon.ico` and a `/manifest.webmanifest` that makes Chrome's "Install as app" produce a
   real Dock icon and a chromeless window.
 - **Linked issues**: any card can carry a `linkedIssue` (`{url, repo, number}`, older ones also a
-  `title`), shown as a `repo#number` pill. Linked by hand only - paste a github.com issue/PR URL
-  into the title, drag the link onto the card, or the hover-only `+ISSUE` button - and parsed
-  client-side (no `gh`, no network); synced to the Focus copy like handoffs. Automatic matching
-  (gh search + LLM judgment) was removed: it never found a real match.
+  `title`), shown as a `repo#number` pill. There is currently no way to add one: automatic
+  matching (gh search + LLM judgment) never found a real match, and the manual `+ISSUE`
+  button, paste and drag paths that replaced it were removed as unwanted. Existing links still
+  render and can be removed; removal is synced to the Focus copy like handoffs.
 - Server binds `127.0.0.1` **and** `::1` (never a public interface), so every `localhost`
   connection reaches Logbook even if something else grabs the port's wildcard; it exits with a
   clear message if the port is already taken on either loopback, and falls back to IPv4 with a

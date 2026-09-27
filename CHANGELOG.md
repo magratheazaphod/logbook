@@ -7,6 +7,12 @@ forward-compatible: no migration is required and unknown fields are preserved on
 
 ## [Unreleased]
 
+### Removed
+
+- Adding GitHub issue links to cards (the `+ISSUE` button, pasting an issue URL into a title, and
+  dragging an issue link onto a card). Links already on a board still show, and can still be
+  removed.
+
 ## [1.0.0] - 2026-09-27
 
 First public release. Logbook had been in daily use since July 2026; this entry summarizes

@@ -264,12 +264,6 @@
     line-height:1;padding:2px 3px;border-radius:5px;
   }
   .issue-unlink:hover{color:var(--accent);background:var(--accent-soft)}
-  .issue-input{
-    display:block;width:100%;margin-top:6px;font-family:var(--mono);font-size:11px;
-    color:var(--ink);background:var(--paper);border:1px solid var(--accent-soft-line);
-    border-radius:999px;padding:3px 10px;color-scheme:light dark;
-  }
-  .issue-input:focus{outline:2px solid var(--accent);outline-offset:1px}
 
   /* Handoff docs dragged onto a card ------------------------------------- */
   .handoff-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
@@ -383,19 +377,6 @@
   /* A one-line card is too short to stack TOP under the X without it
      spilling past the bottom edge - sit it beside the X instead. */
   li.row.one-line .to-top{top:11px;right:34px}
-  /* Link-an-issue button: same hover-only corner treatment as TOP, one step
-     further left so the two never overlap. */
-  .row .issue-add{
-    position:absolute;top:33px;right:44px;
-    border:0;background:none;color:var(--faint);cursor:pointer;
-    font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.05em;
-    line-height:1;padding:3px 5px;border-radius:5px;opacity:0;transition:opacity .12s;
-    white-space:nowrap;
-  }
-  li.row:hover .issue-add,li.row:focus-within .issue-add{opacity:1}
-  .row .issue-add:hover{color:var(--accent);background:var(--accent-soft)}
-  li.row.one-line .issue-add{top:11px;right:78px}
-  @media (hover:none){ .row .issue-add{opacity:1} }
   .title[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 
   .empty{color:var(--faint);font-size:13.5px;padding:14px 2px;font-style:italic}
@@ -940,28 +921,10 @@ function renderTasks() {
 }
 
 // ---- linked GitHub issues -------------------------------------------------
-// Linked by hand only: paste a github.com issue/PR URL into a card's title,
-// drag the link onto the card, or use the ISSUE button. The URL is parsed
-// here - no gh, no network - so the pill shows repo#number, not the title.
-// (An automatic matcher used to guess these; it never found a real match and
-// was removed. Boards it wrote still carry {url, title, repo, number}.)
-const GH_ISSUE_RE = /^\/([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/(issues|pull)\/(\d+)\/?$/;
-
-function parseIssueUrl(text) {
-  let u;
-  try { u = new URL(String(text || "").trim()); } catch { return null; }
-  if (!/^https?:$/.test(u.protocol)) return null;
-  if (!/^(www\.)?github\.com$/i.test(u.hostname)) return null;
-  // Tolerate the tails GitHub itself hands out, like /files or #issuecomment-1.
-  const path = u.pathname.replace(/^(\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+)\/.*$/, "$1");
-  const m = path.match(GH_ISSUE_RE);
-  if (!m || m[2] === "." || m[2] === "..") return null;
-  const number = Number(m[4]);
-  if (!Number.isSafeInteger(number) || number < 1) return null;
-  return { url: `https://github.com/${m[1]}/${m[2]}/${m[3]}/${number}`,
-           repo: `${m[1]}/${m[2]}`, number };
-}
-
+// There is no way to add a link for now: an automatic matcher never found a
+// real match and a manual "+ISSUE" button was unwanted, so both are gone.
+// Boards that already carry {url, title, repo, number} still show the pill,
+// and its remove button still works.
 // Like handoffs, a Focus row is a copy of its card, so a link or unlink on
 // either copy is written to both.
 function syncIssue(item) {
@@ -978,64 +941,6 @@ function setLinkedIssue(item, issue) {
   syncIssue(item);
   refreshAfterHandoff();
   save();
-}
-
-// Returns true when the text was a usable link (and links it); otherwise
-// warns and returns false. `quiet` skips the warning for non-URLs.
-function linkIssueFromText(item, text, quiet) {
-  const issue = parseIssueUrl(text);
-  if (issue) {
-    setLinkedIssue(item, issue);
-    flashNote(`linked ${issue.repo}#${issue.number}`);
-    return true;
-  }
-  if (!quiet) flashNote("not a GitHub issue or PR link", true);
-  return false;
-}
-
-// Pasting a lone GitHub issue/PR URL into a title links it instead of
-// turning the title into a URL. Any other paste (including other github.com
-// links) goes through untouched.
-function issuePasteHandler(item) {
-  return e => {
-    const text = (e.clipboardData?.getData("text/plain") || "").trim();
-    if (/\s/.test(text) || !parseIssueUrl(text)) return;
-    e.preventDefault();
-    // Commit any unsaved title edit (titles save on blur) before the
-    // re-render that linking triggers destroys this element.
-    e.currentTarget.blur();
-    linkIssueFromText(item, text);
-  };
-}
-
-function issueAddButton(item) {
-  if (item.linkedIssue) return null;
-  const b = el("button", "issue-add"); b.type = "button"; b.textContent = "+ISSUE";
-  b.title = "Link a GitHub issue or PR (or paste its URL into the title)";
-  b.setAttribute("aria-label", "Link a GitHub issue");
-  b.onclick = e => {
-    e.stopPropagation();
-    const body = b.closest("li.row")?.querySelector(".body");
-    if (!body || body.querySelector(".issue-input")) return;
-    const inp = el("input", "issue-input");
-    inp.type = "url"; inp.placeholder = "https://github.com/owner/repo/issues/123";
-    inp.setAttribute("aria-label", "GitHub issue or PR URL");
-    let done = false;
-    const close = () => { done = true; inp.remove(); };
-    inp.addEventListener("keydown", ev => {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        if (!inp.value.trim()) { close(); return; }
-        if (parseIssueUrl(inp.value)) { done = true; linkIssueFromText(item, inp.value); }
-        else flashNote("not a GitHub issue or PR link", true);
-      } else if (ev.key === "Escape") { ev.preventDefault(); close(); }
-    });
-    inp.addEventListener("blur", () => { if (!done) close(); });
-    const title = body.querySelector(".title");
-    title ? title.after(inp) : body.prepend(inp);
-    inp.focus();
-  };
-  return b;
 }
 
 // Small pill shown under a card's title for its linked GitHub issue.
@@ -1187,7 +1092,6 @@ function initFileDrop() {
   const isFiles = e => Array.from(e.dataTransfer?.types || []).includes("Files");
   // A link dragged in from a browser tab or page carries text/uri-list; a
   // card being reordered carries only text/plain, so it never matches.
-  const isLink = e => !isFiles(e) && Array.from(e.dataTransfer?.types || []).includes("text/uri-list");
   let hot = null;
   const clear = () => {
     document.body.classList.remove("file-dragging");
@@ -1228,7 +1132,7 @@ function initFileDrop() {
   };
 
   document.addEventListener("dragover", e => {
-    if (!isFiles(e) && !isLink(e)) return;
+    if (!isFiles(e)) return;
     e.preventDefault();          // without this the browser refuses the drop
     e.stopPropagation();
     document.body.classList.add("file-dragging");
@@ -1244,20 +1148,11 @@ function initFileDrop() {
   document.addEventListener("dragend", clear, true);
 
   document.addEventListener("drop", e => {
-    const link = isLink(e);
-    if (!isFiles(e) && !link) return;
+    if (!isFiles(e)) return;
     e.preventDefault();          // else the browser navigates to the file
     e.stopPropagation();
     const hit = targetUnder(e);
     clear();
-    if (link) {
-      if (!hit) { flashNote("drop an issue link onto a backlog, idea or content card", true); return; }
-      const target = DND[hit.listId]?.arr.find(x => x.id === hit.id);
-      const uri = (e.dataTransfer.getData("text/uri-list") || "")
-        .split(/\r?\n/).find(u => u && !u.startsWith("#")) || "";
-      if (target) linkIssueFromText(target, uri);
-      return;
-    }
     if (!hit) { flashNote("drop a doc onto a backlog, idea or content card", true); return; }
     const item = DND[hit.listId]?.arr.find(x => x.id === hit.id);
     // Both must be read now — a DataTransfer is dead once this handler returns.
@@ -1515,7 +1410,6 @@ function taskRow(t, listId) {
   title.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); title.blur(); }
   });
-  title.addEventListener("paste", issuePasteHandler(t));
   body.appendChild(title);
   const issueRow = linkedIssueRow(t);
   if (issueRow) body.appendChild(issueRow);
@@ -1527,8 +1421,7 @@ function taskRow(t, listId) {
   del.onclick = () => deleteItem(t, listId);
 
   const top = toTopButton(t, listId);
-  const addIssue = issueAddButton(t);
-  li.append(grip, chip, body, ...(top ? [top] : []), ...(addIssue ? [addIssue] : []), del);
+  li.append(grip, chip, body, ...(top ? [top] : []), del);
   return li;
 }
 
@@ -1613,7 +1506,6 @@ function ideaRow(idea, listId) {
     idea.title = v; save();
   });
   title.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); title.blur(); } });
-  title.addEventListener("paste", issuePasteHandler(idea));
   body.appendChild(title);
   const issueRow = linkedIssueRow(idea);
   if (issueRow) body.appendChild(issueRow);
@@ -1628,8 +1520,7 @@ function ideaRow(idea, listId) {
   const del = el("button", "del"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete idea");
   del.onclick = () => deleteItem(idea, listId);
   const top = toTopButton(idea, listId);
-  const addIssue = issueAddButton(idea);
-  li.append(grip, chip, body, ...(top ? [top] : []), ...(addIssue ? [addIssue] : []), del);
+  li.append(grip, chip, body, ...(top ? [top] : []), del);
   return li;
 }
 
