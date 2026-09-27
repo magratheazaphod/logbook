@@ -75,7 +75,7 @@ class SandboxedServerTest(unittest.TestCase):
             "LOGBOOK_CONFIG": str(self.config_file),
             "CLAUDE_PROJECTS_DIR": str(self.projects_dir),
             "COWORK_SESSIONS_DIR": str(self.cowork_dir),
-            # No `claude` or `gh` reachable: summaries and issue match stay off.
+            # No `claude` reachable: summaries stay off.
             "PATH": str(empty_bin),
         })
         os.environ.pop("LOGBOOK_MIN_TOKENS", None)
@@ -97,7 +97,6 @@ class SandboxedServerTest(unittest.TestCase):
             path = Path(getattr(mod, attr)).resolve()
             assert self.tmp in path.parents, f"{attr} escaped the sandbox: {path}"
         assert mod.CLAUDE_BIN is None, "a real `claude` binary is reachable"
-        assert mod.GH_BIN is None, "a real `gh` binary is reachable"
         return mod
 
 

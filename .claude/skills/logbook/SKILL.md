@@ -104,7 +104,9 @@ the mechanical layout, run instructions, and file responsibilities.
   snapshots the board to `data/backups/board-<date>.json` before each day's first write
   (60 kept). A weekly cadence was considered and rejected — daily bounds loss at one day for
   a ~20KB file. Data stays out of the public repo (`data/` additions gitignored).
-- **GitHub issue auto-matching**: adding a backlog task or idea searches a fixed set of repos
+- **GitHub issue auto-matching (REMOVED 2026-09)**: taken out because in practice it never
+  once found a real match for the owner; replaced by manual linking (paste/drag a URL or the
+  `+ISSUE` button). History kept for context: adding a backlog task or idea searches a fixed set of repos
   (`jvc56/MAGPIE`, `magratheazaphod/scrabble-ai`, all of `domino14`, all of `woogles-io`) for an
   existing open issue that matches, and attaches a removable pill (✕ to unlink) if found. Repo
   list grew twice: first to include the user's own `scrabble-ai` repo pre-emptively ("just in

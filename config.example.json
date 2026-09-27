@@ -1,8 +1,4 @@
 {
-  "issueMatch": {
-    "owners": ["your-github-org"],
-    "repos": ["someone/some-repo"]
-  },
   "coworkSkipSessions": [],
   "launchdLabel": "local.logbook"
 }
