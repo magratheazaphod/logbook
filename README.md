@@ -44,8 +44,6 @@ backlog, so the archive only ever shows what actually got done.
   editor onto a card and it attaches as a pill; click it to read the doc rendered in-app. It
   tracks the live file and falls back to a snapshot if the file moves. Content cards also get a
   **+ draft** button: an in-app Markdown editor with preview and autosave.
-- **GitHub issue links.** Paste an issue or PR URL into a card title, drag the link onto the card,
-  or use the hover `+ISSUE` button. Links are manual - Logbook never calls GitHub.
 - **Dark mode.** Follows your OS, or pin light or dark from the header.
 - **Install as app.** A real icon and a chromeless window via Chrome's "Install as app" or iOS's
   "Add to Home Screen".
