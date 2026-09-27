@@ -11,7 +11,7 @@ daily log that writes itself from your Claude Code sessions.
 No dependencies, no build step, no account. Python 3 (already on your Mac) and one HTML file,
 running on your own machine.
 
-![The Logbook UI: a backlog and ideas list on the left, and the day's Claude Code sessions on the
+![The Logbook UI: backlog, ideas and content lists on the left, and the day's Claude Code sessions on the
 right](docs/screenshots/1-deck.png)
 
 Everything on one screen: the lists on the left, today's focus and the session ledger on the
