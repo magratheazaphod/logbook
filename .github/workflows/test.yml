@@ -39,3 +39,32 @@ jobs:
         run: |
           "$PY" --version
           "$PY" -m unittest discover -v tests
+
+  installer:
+    name: installer / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+          bash -n restart.sh
+
+      - name: Dry run renders a valid plist
+        run: |
+          PORT=8899 LOGBOOK_LABEL=ci.logbook ./install.sh --dry-run > rendered.plist
+          python3 -c 'import plistlib; p = plistlib.load(open("rendered.plist", "rb")); assert p["Label"] == "ci.logbook", p; assert p["ProcessType"] == "Interactive"; assert p["KeepAlive"] and p["RunAtLoad"]; assert p["EnvironmentVariables"]["PORT"] == "8899"; print("ok", p["WorkingDirectory"])'
+
+      - if: runner.os == 'Linux'
+        name: Linux install points to python3 server.py
+        run: |
+          if ./install.sh 2> err.txt; then echo "expected failure"; exit 1; fi
+          grep -q "python3 server.py" err.txt
+          cat err.txt
+          ./uninstall.sh | grep -q "Nothing to uninstall"

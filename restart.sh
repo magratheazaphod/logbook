@@ -12,8 +12,9 @@ cd "$(dirname "$0")"
 PORT="${PORT:-8787}"
 LOG="${LOGBOOK_LOG:-$HOME/logbook-server.log}"
 URL="http://localhost:$PORT/api/board"
-# launchd label from config.json (see config.example.json), if one is set.
-LABEL=$(python3 -c 'import json; print(json.load(open("config.json")).get("launchdLabel", "local.logbook"))' 2>/dev/null || echo local.logbook)
+# launchd label: LOGBOOK_LABEL, else config.json's launchdLabel, else
+# local.logbook - the same order install.sh and uninstall.sh use.
+LABEL="${LOGBOOK_LABEL:-$(python3 -c 'import json; print(json.load(open("config.json")).get("launchdLabel") or "local.logbook")' 2>/dev/null || echo local.logbook)}"
 TARGET="gui/$(id -u)/$LABEL"
 
 # --- if launchd owns the server, restart through it --------------------------
