@@ -65,6 +65,27 @@ class BoardRevGuardTest(HttpTestCase):
         self.assertEqual(code, 409)
         self.assertEqual(resp["board"]["tasks"][0]["id"], "agent")
 
+    def test_unknown_fields_survive_a_save(self):
+        # board.json is forward-compatible within 1.x: fields this version
+        # doesn't know, at any level, are kept rather than dropped.
+        board = self.disk()
+        board["futureTopLevel"] = {"keep": True}
+        board["tasks"] = [{"id": "t", "title": "x", "status": "backlog", "futureItem": 7}]
+        self.srv.BOARD_FILE.write_text(json.dumps(board), encoding="utf-8")
+        # An older client that never saw futureTopLevel omits it...
+        code, _ = self.json_request("POST", "/api/board", {
+            "rev": 0, "tasks": board["tasks"], "clientOnly": "yes",
+            "dayPlans": {"2999-01-01": {"tasks": [], "ideas": [], "futurePlan": 1}}})
+        self.assertEqual(code, 200)
+        saved = self.disk()
+        self.assertEqual(saved["futureTopLevel"], {"keep": True})
+        self.assertEqual(saved["clientOnly"], "yes")
+        self.assertEqual(saved["tasks"][0]["futureItem"], 7)
+        self.assertEqual(saved["dayPlans"]["2999-01-01"]["futurePlan"], 1)
+        # ...and a client that round-trips it wins.
+        code, _ = self.json_request("POST", "/api/board", dict(saved, futureTopLevel=2))
+        self.assertEqual((code, self.disk()["futureTopLevel"]), (200, 2))
+
 
 class DayPlanRolloverTest(SandboxedServerTest):
     def test_unfinished_past_items_return_to_the_pile(self):
@@ -89,6 +110,19 @@ class DayPlanRolloverTest(SandboxedServerTest):
         self.assertEqual(board["rev"], 4)   # the rollover is a write, so rev moves
         on_disk = json.loads(self.srv.BOARD_FILE.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["rev"], 4)
+
+    def test_rollover_keeps_unknown_day_plan_fields(self):
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        self.srv.ensure_data()
+        self.srv.save_board({
+            "rev": 0, "tasks": [], "ideas": [], "content": [],
+            "dayPlans": {yesterday: {"tasks": [{"id": "d", "status": "done"},
+                                               {"id": "l", "status": "doing"}],
+                                     "ideas": [], "note": "kept"}},
+        })
+        board = self.srv.load_board()
+        self.assertEqual(board["dayPlans"][yesterday]["note"], "kept")
+        self.assertEqual([t["id"] for t in board["dayPlans"][yesterday]["tasks"]], ["d"])
 
     def test_unreadable_board_loads_as_empty(self):
         self.srv.DATA_DIR.mkdir(parents=True)
