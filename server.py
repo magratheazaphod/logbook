@@ -165,12 +165,16 @@ def roll_over_stale_day_plans(board):
             board["tasks"] = leftover_tasks + board.get("tasks", [])
             board["ideas"] = leftover_ideas + board.get("ideas", [])
             changed = True
-        if kept_tasks or kept_ideas:
-            plans[day_key] = {"tasks": kept_tasks, "ideas": kept_ideas}
+        extra = {k: v for k, v in plan.items() if k not in ("tasks", "ideas")}
+        if kept_tasks or kept_ideas or extra:
+            plans[day_key] = dict(extra, tasks=kept_tasks, ideas=kept_ideas)
         else:
             del plans[day_key]
             changed = True
     return changed
+
+
+BOARD_KEYS = ("tasks", "ideas", "content", "dayPlans", "rev")
 
 
 def load_board():
@@ -1227,13 +1231,19 @@ class Handler(BaseHTTPRequestHandler):
                 if type(rev) is not int or rev != current.get("rev"):
                     self._send(409, {"error": "stale", "board": current})
                     return
-                board = {
+                # Forward compatibility: fields this version doesn't know
+                # (written by a newer Logbook, an agent or a script) survive
+                # a save. The client's copy wins; one it left out keeps the
+                # value on disk. Items inside the lists pass through whole.
+                board = {k: v for k, v in current.items() if k not in BOARD_KEYS}
+                board.update({k: v for k, v in data.items() if k not in BOARD_KEYS})
+                board.update({
                     "tasks": data.get("tasks", []),
                     "ideas": data.get("ideas", []),
                     "content": data.get("content", []),
                     "dayPlans": data.get("dayPlans", {}),
                     "rev": current.get("rev", 0) + 1,
-                }
+                })
                 save_board(board)
                 self._send(200, {"ok": True, "rev": board["rev"]})
             except Exception as e:

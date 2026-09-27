@@ -56,7 +56,7 @@
 <main>
 <header>
   <h1>Making Logbook installable and forkable</h1>
-  <div class="meta">Plan · agreed 2026-09-17 · audience: Claude Code users on macOS</div>
+  <div class="meta">Plan · agreed 2026-09-17 · steps 1-6 done 2026-09-27 · audience: Claude Code users on macOS</div>
 </header>
 
 <p>Linux works minus Cowork and launchd. Sync, multiple users and hosting are explicitly out of scope. The architecture does not need to change; the remaining work is de-personalizing, packaging, trust signals and docs.</p>
@@ -74,18 +74,18 @@
   <li>Hardcoded personal settings: issue-match repos (<code>ISSUE_MATCH_OWNERS</code> / <code>ISSUE_MATCH_REPOS</code>), a Cowork session skip-list, and the <code>com.jesse.logbook</code> launchd label.</li>
   <li><code>.claude/skills/logbook/SKILL.md</code> is personal context, not project docs.</li>
   <li>The launchd plist lives only in <code>~/Library/LaunchAgents</code>; its <code>PATH</code> must reach <code>claude</code> or summaries fail with "Not logged in".</li>
-  <li>Prerequisites undocumented as required vs optional: transcripts, <code>claude</code> CLI, <code>gh</code>, macOS paths.</li>
+  <li>Prerequisites undocumented as required vs optional: transcripts, <code>claude</code> CLI, <code>gh</code> (since removed), macOS paths.</li>
   <li>No tests or CI around a parser that depends on an undocumented format.</li>
   <li>No tags, changelog, or stated <code>board.json</code> compatibility.</li>
 </ul></div>
 
 <h2>Plan - one PR per step</h2>
-<div class="card step"><div class="num">1</div><div><h3>License and scope</h3><p>MIT LICENSE. README gains "Who this is for" and "Not goals".</p></div></div>
-<div class="card step"><div class="num">2</div><div><h3>Config instead of hardcoding</h3><p>Gitignored <code>config.json</code> plus committed <code>config.example.json</code> (or env vars) for issue-match repos, skip-list and launchd label. Issue match off by default. Startup banner lists active optional features.</p></div></div>
-<div class="card step"><div class="num">3</div><div><h3>Installer</h3><p><code>./install.sh</code> renders a committed plist template with the shell's <code>PATH</code>, loads it and health-checks <code>localhost:8787</code>; <code>./uninstall.sh</code> reverses it.</p></div></div>
-<div class="card step"><div class="num">4</div><div><h3>Tests and CI</h3><p>Stdlib <code>unittest</code> with synthetic transcripts (worktree, Cowork sidecar, malformed lines), the <code>rev</code> 409 guard, handoff path safety, backups. GitHub Actions on macOS and Linux. Pull ahead of 2-3 if feature work continues - it protects the live board too.</p></div></div>
-<div class="card step"><div class="num">5</div><div><h3>Split personal from project</h3><p>Move the logbook skill to <code>~/.claude/skills</code>; genericize <code>CLAUDE.md</code>, keeping the branch-and-PR rule.</p></div></div>
-<div class="card step"><div class="num">6</div><div><h3>README as a product page</h3><p>Features, 2-minute install, configuration, privacy statement, upgrading. <code>CHANGELOG.md</code>, tag <code>v1.0.0</code>, GitHub description and topics.</p></div></div>
+<div class="card step"><div class="num">1</div><div><h3>[Done] License and scope</h3><p>MIT LICENSE. README gains "Who this is for" and "Not goals".</p></div></div>
+<div class="card step"><div class="num">2</div><div><h3>[Done] Config instead of hardcoding</h3><p>Gitignored <code>config.json</code> plus committed <code>config.example.json</code> (or env vars) for issue-match repos, skip-list and launchd label. Issue match off by default. Startup banner lists active optional features.</p></div></div>
+<div class="card step"><div class="num">3</div><div><h3>[Done] Installer</h3><p><code>./install.sh</code> renders a committed plist template with the shell's <code>PATH</code>, loads it and health-checks <code>localhost:8787</code>; <code>./uninstall.sh</code> reverses it.</p></div></div>
+<div class="card step"><div class="num">4</div><div><h3>[Done] Tests and CI</h3><p>Stdlib <code>unittest</code> with synthetic transcripts (worktree, Cowork sidecar, malformed lines), the <code>rev</code> 409 guard, handoff path safety, backups. GitHub Actions on macOS and Linux. Pull ahead of 2-3 if feature work continues - it protects the live board too.</p></div></div>
+<div class="card step"><div class="num">5</div><div><h3>[Done] Split personal from project</h3><p>Move the logbook skill to <code>~/.claude/skills</code>; genericize <code>CLAUDE.md</code>, keeping the branch-and-PR rule.</p></div></div>
+<div class="card step"><div class="num">6</div><div><h3>[Done] README as a product page</h3><p>Features, 2-minute install, configuration, privacy statement, upgrading. <code>CHANGELOG.md</code>, tag <code>v1.0.0</code>, GitHub description and topics.</p></div></div>
 <div class="card step"><div class="num">7</div><div><h3>Portfolio hook</h3><p>Short case study on jesse-day.com linking the repo. No hosted demo - the app reads local transcripts, so a demo would be a facade; a GIF carries it better.</p></div></div>
 
 <h2>Before step 1</h2>
