@@ -7,14 +7,14 @@ Python 3 standard library only.
 
 ## Run it
 
-The server runs as a launchd LaunchAgent (`~/Library/LaunchAgents/com.jesse.logbook.plist`,
-label `com.jesse.logbook`): `RunAtLoad` + `KeepAlive` means it comes up on login/reboot and
+The server runs as a launchd LaunchAgent (`~/Library/LaunchAgents/<label>.plist`, with
+the label set as `launchdLabel` in `config.json`): `RunAtLoad` + `KeepAlive` means it comes up on login/reboot and
 relaunches itself if it ever crashes, at `http://localhost:8787`.
 
 ```bash
 cd ~/projects/logbook
 ./restart.sh                       # relaunch cleanly after editing server.py
-launchctl print gui/$(id -u)/com.jesse.logbook   # check it's loaded/running
+launchctl print gui/$(id -u)/<label>   # check it's loaded/running
 ```
 
 `restart.sh` prefers `launchctl kickstart -k` when the agent is loaded (kill-then-start through

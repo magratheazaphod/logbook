@@ -12,7 +12,8 @@ cd "$(dirname "$0")"
 PORT="${PORT:-8787}"
 LOG="${LOGBOOK_LOG:-$HOME/logbook-server.log}"
 URL="http://localhost:$PORT/api/board"
-LABEL=com.jesse.logbook
+# launchd label from config.json (see config.example.json), if one is set.
+LABEL=$(python3 -c 'import json; print(json.load(open("config.json")).get("launchdLabel", "local.logbook"))' 2>/dev/null || echo local.logbook)
 TARGET="gui/$(id -u)/$LABEL"
 
 # --- if launchd owns the server, restart through it --------------------------
@@ -21,8 +22,7 @@ TARGET="gui/$(id -u)/$LABEL"
 # race to relaunch the old code before our own nohup got a chance to bind the
 # port. `kickstart -k` kills-then-starts through launchd instead, so there's
 # only ever one relaunch path. Falls through to the manual nohup below only if
-# the job was never loaded (e.g. plist missing) - see
-# job-search/tracker/scripts/restart-server.sh for the pattern this mirrors.
+# the job was never loaded (e.g. plist missing).
 if launchctl print "$TARGET" >/dev/null 2>&1; then
   echo "Restarting via launchd ($LABEL)"
   launchctl kickstart -k "$TARGET" >/dev/null 2>&1 || true

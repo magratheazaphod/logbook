@@ -67,18 +67,30 @@ COWORK_SESSIONS_DIR = Path(
     )
 ).expanduser()
 
-# One-time cleanup: early tinkering/onboarding Cowork chats from before real
-# Cowork usage started, not worth logging as work. Keyed by cliSessionId (the
-# transcript filename's stem). New Cowork sessions are included by default —
-# this is a denylist for known-junk history, not an allowlist for the future.
-COWORK_SESSION_DENYLIST = {
-    "62a0126e-3a76-43c2-bffd-66cb47b3b868",  # scrabble-ai: "Claude code update"
-    "df12e620-62d3-47fd-8e88-7df7c273cf0a",  # auto-scrabble-analysis: "Scrabble games mistake analysis"
-    "909d193c-cafe-41a5-8b30-352c9101b08c",  # onboarding: "Customize Claude to your role"
-    "09a7c121-51a1-42c5-8515-922630135c17",  # onboarding: "Schedule a recurring task"
-    "ce43a2b3-e6e3-4cfb-a00a-e31f65aa3e52",  # onboarding: "Crontab edit warning"
-    "28d8a77f-400d-4c95-956c-a0416511f701",  # auto-scrabble-analysis: "Uploading tournament games to Woogles"
-}
+# Personal settings live in config.json beside this file (gitignored; copy
+# config.example.json to start one). Every key is optional and a missing or
+# unreadable file just means the defaults, so a fresh clone runs as-is.
+CONFIG_FILE = ROOT / "config.json"
+
+
+def _load_config():
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text())
+        return cfg if isinstance(cfg, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        print(f"Ignoring unreadable {CONFIG_FILE.name}: {e}")
+        return {}
+
+
+CONFIG = _load_config()
+
+# Cowork sessions to leave out of the log, keyed by cliSessionId (the
+# transcript filename's stem) - e.g. onboarding chats not worth logging as
+# work. New Cowork sessions are included by default: this is a skip-list for
+# known-junk history, not an allowlist.
+COWORK_SESSION_DENYLIST = set(CONFIG.get("coworkSkipSessions", []))
 
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -416,8 +428,9 @@ CLAUDE_BIN = shutil.which("claude")
 # isn't installed/authenticated or the search/judgment call fails.
 # --------------------------------------------------------------------------- #
 GH_BIN = shutil.which("gh")
-ISSUE_MATCH_OWNERS = ["domino14", "woogles-io"]
-ISSUE_MATCH_REPOS = ["jvc56/MAGPIE", "magratheazaphod/scrabble-ai"]
+# Off unless config.json names owners (every repo of a user/org) or repos.
+ISSUE_MATCH_OWNERS = list(CONFIG.get("issueMatch", {}).get("owners", []))
+ISSUE_MATCH_REPOS = list(CONFIG.get("issueMatch", {}).get("repos", []))
 
 
 _SEARCH_STOPWORDS = {
@@ -480,7 +493,7 @@ def _search_queries_from_title(title):
 
 
 def _search_github_issues(title):
-    if not GH_BIN or not title:
+    if not GH_BIN or not title or not (ISSUE_MATCH_OWNERS or ISSUE_MATCH_REPOS):
         return []
     candidates = []
     for query in _search_queries_from_title(title):
@@ -1392,6 +1405,14 @@ def main():
     print(f"Logbook running at {url}")
     print(f"Reading Claude Code sessions from: {PROJECTS_DIR}"
           + ("" if PROJECTS_DIR.exists() else "  (not found yet — that's ok)"))
+    def on_off(ok, why):
+        return "on" if ok else f"off ({why})"
+    print("Optional features:")
+    print("  summaries:   " + on_off(CLAUDE_BIN, "`claude` not on PATH"))
+    print("  issue match: " + on_off(
+        GH_BIN and (ISSUE_MATCH_OWNERS or ISSUE_MATCH_REPOS),
+        "`gh` not on PATH" if not GH_BIN else "no repos in config.json"))
+    print("  cowork:      " + on_off(COWORK_SESSIONS_DIR.exists(), "no Cowork sessions dir"))
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
