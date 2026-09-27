@@ -41,7 +41,7 @@ class BoardRevGuardTest(HttpTestCase):
     def test_missing_wrong_type_or_future_rev_is_rejected(self):
         self.json_request("POST", "/api/board", {"rev": 0, "tasks": [{"id": "a"}]})
         before = self.srv.BOARD_FILE.read_bytes()
-        for rev in (None, "1", 1.5, 2, -1, True, [1]):
+        for rev in (None, "1", 1.5, 1.0, 2, -1, True, [1]):
             body = {"tasks": []} if rev is None else {"rev": rev, "tasks": []}
             code, resp = self.json_request("POST", "/api/board", body)
             self.assertEqual(code, 409, f"rev={rev!r} was accepted")

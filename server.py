@@ -1360,10 +1360,10 @@ class Handler(BaseHTTPRequestHandler):
                 # A client that loaded the board earlier than the last write
                 # (a tab left open for days, say) must not silently clobber
                 # everything saved since — hand it the fresh board instead.
-                # JSON `true` compares equal to 1 in Python; never let a
-                # boolean stand in for a revision number.
+                # JSON `true` equals 1 and `3.0` equals 3 in Python; only an
+                # exact integer revision number counts.
                 rev = data.get("rev")
-                if isinstance(rev, bool) or rev != current.get("rev"):
+                if type(rev) is not int or rev != current.get("rev"):
                     self._send(409, {"error": "stale", "board": current})
                     return
                 board = {
