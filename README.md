@@ -36,6 +36,23 @@ To stop, press `Ctrl+C` in the terminal. After editing `server.py`, `./restart.s
 process and relaunches cleanly — the front end is read fresh per request, so UI edits only need a
 browser reload.
 
+## Keep it running (macOS)
+
+A 2-minute install turns Logbook into a LaunchAgent: it starts at login and restarts itself if it
+crashes.
+
+```bash
+cd logbook
+./install.sh                   # renders launchd/logbook.plist.template, loads it, health-checks
+```
+
+Run it from your normal terminal: the agent copies that shell's `PATH` so `claude` resolves for
+day summaries. Re-running replaces the install cleanly. `./uninstall.sh` removes it (your data
+stays). Both take `PORT=8788` and `LOGBOOK_LABEL=my.logbook` overrides; `./install.sh --dry-run`
+prints the plist without changing anything. If another process already holds the port, the
+installer stops and names it. The log goes to `~/logbook-server.log` (`LOGBOOK_LOG` to change).
+On Linux, run `python3 server.py` under your own supervisor instead.
+
 ## Install it as an app
 
 In Chrome, use **Install as app** (the install button in the address bar, or ⋮ → Cast, Save and
@@ -108,8 +125,8 @@ Optional personal settings go in `config.json` beside `server.py` (gitignored). 
 `config.example.json` to start one; every key is optional.
 
 - `coworkSkipSessions` - Cowork session IDs to leave out of the log.
-- `launchdLabel` - the LaunchAgent label `restart.sh` restarts through, if you run Logbook under
-  launchd.
+- `launchdLabel` - the LaunchAgent label `install.sh`, `uninstall.sh` and `restart.sh` use
+  (default `local.logbook`).
 
 On startup the server prints which optional features are on.
 

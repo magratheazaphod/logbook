@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent template for Logbook. Do not install this file by hand:
+  ./install.sh fills in the @PLACEHOLDERS@ (XML-escaped) and writes the result
+  to ~/Library/LaunchAgents/<label>.plist.
+
+  - PATH is the installing shell's PATH, so server.py can find `claude`
+    (launchd's bare default PATH cannot, and day summaries then fail).
+  - ProcessType Interactive: without it launchd throttles CPU and I/O and the
+    cold transcript scan takes minutes instead of seconds.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@PYTHON@</string>
+    <string>server.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@WORKDIR@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>@HOME@</string>
+    <key>PATH</key>
+    <string>@PATH@</string>
+    <key>PORT</key>
+    <string>@PORT@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>@LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG@</string>
+</dict>
+</plist>
