@@ -83,7 +83,8 @@ By default the server reads `~/.claude/projects/**/*.jsonl`. If yours live elsew
 CLAUDE_PROJECTS_DIR=/path/to/projects python3 server.py
 ```
 
-Nothing leaves your machine — the server binds to `127.0.0.1` only and makes no outbound calls.
+The server binds to `127.0.0.1` only. The only things that leave your machine are the headless
+`claude` calls that write summaries and, if you turn it on, `gh` issue searches.
 
 ## Summaries
 
@@ -94,6 +95,33 @@ nothing to schedule and nothing to set up.
 
 Don't like a day's summary? Edit it in place and it stays edited, or hit regenerate for a fresh
 one.
+
+## Configuration
+
+Optional personal settings go in `config.json` beside `server.py` (gitignored). Copy
+`config.example.json` to start one; every key is optional.
+
+- `issueMatch.owners` / `issueMatch.repos` - when you add a task, Logbook searches these GitHub
+  users/orgs and repos for a matching open issue and links it. Off when both are empty. Needs
+  `gh`, logged in.
+- `coworkSkipSessions` - Cowork session IDs to leave out of the log.
+- `launchdLabel` - the LaunchAgent label `restart.sh` restarts through, if you run Logbook under
+  launchd.
+
+On startup the server prints which optional features are on.
+
+## Who this is for
+
+Claude Code users on macOS who want one page for "what should I be doing" and "what did I
+actually do". Linux works too, minus Cowork sessions and launchd.
+
+What you need: Python 3 and Claude Code transcripts (required); a logged-in `claude` CLI on
+`PATH` (for summaries); `gh` (for issue matching); Claude Desktop (for Cowork sessions).
+
+## Not goals
+
+Logbook is a one-person, one-machine tool. Sync across devices, multiple users, hosting, and
+Windows are out of scope.
 
 ## Notes
 

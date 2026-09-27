@@ -16,3 +16,6 @@ data/board.json.pre-recovery*
 data/recovered-*.json
 
 .DS_Store
+
+# Personal settings (see config.example.json).
+config.json
