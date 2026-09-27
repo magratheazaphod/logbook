@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"sess-worktree","cwd":"/nonexistent-logbook-test/beta/.claude/worktrees/idempotent-flamingo","gitBranch":"worktree-idempotent-flamingo","timestamp":"2026-01-15T14:00:00Z","message":{"role":"user","content":"Refactor the importer in a worktree"}}
+{"type":"assistant","sessionId":"sess-worktree","cwd":"/nonexistent-logbook-test/beta/.claude/worktrees/idempotent-flamingo","timestamp":"2026-01-15T14:20:00Z","message":{"role":"assistant","content":"Importer refactored.","usage":{"input_tokens":1000,"output_tokens":200}}}

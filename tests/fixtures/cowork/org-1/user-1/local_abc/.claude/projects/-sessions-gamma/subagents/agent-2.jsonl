@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"agent-2","timestamp":"2026-01-15T16:05:00Z","message":{"role":"user","content":"Cowork subagent"}}
+{"type":"assistant","sessionId":"agent-2","timestamp":"2026-01-15T16:06:00Z","message":{"role":"assistant","content":"ok","usage":{"input_tokens":3000}}}

@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"cw-main","cwd":"/sessions/brave-owl","timestamp":"2026-01-15T16:00:00Z","message":{"role":"user","content":"Write this month's newsletter"}}
+{"type":"assistant","sessionId":"cw-main","cwd":"/sessions/brave-owl","timestamp":"2026-01-15T16:30:00Z","message":{"role":"assistant","content":"Newsletter drafted.","usage":{"input_tokens":1500,"output_tokens":500}}}

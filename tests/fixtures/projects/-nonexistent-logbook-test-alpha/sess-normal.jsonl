@@ -1,0 +1,6 @@
+{"type":"summary","summary":"CSV export for the report page","leafUuid":"u-4"}
+{"type":"user","sessionId":"sess-normal","cwd":"/nonexistent-logbook-test/alpha","gitBranch":"main","timestamp":"2026-01-15T10:00:00.000Z","message":{"role":"user","content":"Add a CSV export to the report page"}}
+{"type":"assistant","sessionId":"sess-normal","cwd":"/nonexistent-logbook-test/alpha","gitBranch":"main","timestamp":"2026-01-15T10:01:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Added the export button."}],"usage":{"input_tokens":1200,"output_tokens":300}}}
+{"type":"user","sessionId":"sess-normal","cwd":"/nonexistent-logbook-test/alpha","gitBranch":"main","timestamp":"2026-01-15T10:05:00.000Z","message":{"role":"user","content":"<command-name>/clear</command-name>"}}
+{"type":"user","sessionId":"sess-normal","cwd":"/nonexistent-logbook-test/alpha","gitBranch":"feat/export","timestamp":"2026-01-15T10:06:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Also add a test for it"}]}}
+{"type":"assistant","sessionId":"sess-normal","cwd":"/nonexistent-logbook-test/alpha","gitBranch":"feat/export","timestamp":"2026-01-15T10:10:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Test added and passing."}],"usage":{"input_tokens":500,"output_tokens":100,"cache_read_input_tokens":200}}}

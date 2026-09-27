@@ -126,8 +126,24 @@ Windows are out of scope.
 ## Notes
 
 - Change the port with `PORT=9000 python3 server.py`.
+- `LOGBOOK_DATA_DIR=/path` keeps the board, handoffs and caches somewhere other than `data/`, and
+  `LOGBOOK_CONFIG=/path/config.json` reads settings from another file.
 - Claude Code's transcript format can shift between versions; the parser is defensive and skips
   anything it doesn't recognize, so a format change degrades gracefully rather than breaking.
+
+## Tests
+
+Standard library only, like the server:
+
+```bash
+python3 -m unittest discover tests
+```
+
+The suite runs against synthetic transcripts in `tests/fixtures/` and never touches your real
+board, config or transcripts: each test imports its own copy of `server.py` with
+`LOGBOOK_DATA_DIR`, `LOGBOOK_CONFIG`, `CLAUDE_PROJECTS_DIR` and `COWORK_SESSIONS_DIR` pointed at a
+temp dir, and with no `claude` or `gh` on `PATH`, so it makes no LLM or network calls. CI runs it
+on macOS and Linux (`.github/workflows/test.yml`).
 
 ## License
 
