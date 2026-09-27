@@ -7,6 +7,8 @@ forward-compatible: no migration is required and unknown fields are preserved on
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-27
+
 ### Removed
 
 - Adding GitHub issue links to cards (the `+ISSUE` button, pasting an issue URL into a title, and
@@ -56,5 +58,6 @@ everything up to the release.
 - Failed LLM summaries were frozen instead of retried.
 - The day log could render, and bill for summaries, twice on first load.
 
-[Unreleased]: https://github.com/magratheazaphod/logbook/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/magratheazaphod/logbook/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/magratheazaphod/logbook/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/magratheazaphod/logbook/releases/tag/v1.0.0
