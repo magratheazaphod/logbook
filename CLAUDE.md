@@ -59,7 +59,7 @@ logbook/
 
 - **Board** (`data/board.json`): `tasks[]` each have `id`, `title`, `status`
   (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists. Content
-  items skip GitHub issue matching and carry an optional `postDate`: they aren't copied into
+  items carry an optional `postDate`: they aren't copied into
   `dayPlans` but are derived into the Focus panel's "Content" block under Ideas on that date
   (today's also lists overdue, unfinished pieces). Dropping a card there dates it for today. The UI autosaves via `POST /api/board`.
   An agent or cron job can append items to this file directly (preserve the `rev` field).
@@ -106,7 +106,15 @@ logbook/
   `rsvg-convert` (the `.ico` is assembled in pure Python). Served from `/icons/`, with
   `/favicon.ico` and a `/manifest.webmanifest` that makes Chrome's "Install as app" produce a
   real Dock icon and a chromeless window.
-- Server binds to `127.0.0.1` only; no outbound calls. Parser is defensive and skips transcript
+- **Linked issues**: any card can carry a `linkedIssue` (`{url, repo, number}`, older ones also a
+  `title`), shown as a `repo#number` pill. Linked by hand only - paste a github.com issue/PR URL
+  into the title, drag the link onto the card, or the hover-only `+ISSUE` button - and parsed
+  client-side (no `gh`, no network); synced to the Focus copy like handoffs. Automatic matching
+  (gh search + LLM judgment) was removed: it never found a real match.
+- Server binds `127.0.0.1` **and** `::1` (never a public interface), so every `localhost`
+  connection reaches Logbook even if something else grabs the port's wildcard; it exits with a
+  clear message if the port is already taken on either loopback, and falls back to IPv4 with a
+  warning on hosts without IPv6. No outbound calls. Parser is defensive and skips transcript
   lines it doesn't recognize, so a Claude Code format change degrades gracefully.
 
 ## Tests

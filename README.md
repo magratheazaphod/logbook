@@ -83,8 +83,12 @@ By default the server reads `~/.claude/projects/**/*.jsonl`. If yours live elsew
 CLAUDE_PROJECTS_DIR=/path/to/projects python3 server.py
 ```
 
-The server binds to `127.0.0.1` only. The only things that leave your machine are the headless
-`claude` calls that write summaries and, if you turn it on, `gh` issue searches.
+The server listens on the loopback addresses only (`127.0.0.1` and `::1`), and refuses to start if
+another server already holds the port. The only thing that leaves your machine is the headless
+`claude` calls that write summaries.
+
+To link a GitHub issue or PR to a card, paste its URL into the card's title, drag the link onto
+the card, or use the `+ISSUE` button that appears on hover.
 
 ## Summaries
 
@@ -101,9 +105,6 @@ one.
 Optional personal settings go in `config.json` beside `server.py` (gitignored). Copy
 `config.example.json` to start one; every key is optional.
 
-- `issueMatch.owners` / `issueMatch.repos` - when you add a task, Logbook searches these GitHub
-  users/orgs and repos for a matching open issue and links it. Off when both are empty. Needs
-  `gh`, logged in.
 - `coworkSkipSessions` - Cowork session IDs to leave out of the log.
 - `launchdLabel` - the LaunchAgent label `restart.sh` restarts through, if you run Logbook under
   launchd.
@@ -116,7 +117,7 @@ Claude Code users on macOS who want one page for "what should I be doing" and "w
 actually do". Linux works too, minus Cowork sessions and launchd.
 
 What you need: Python 3 and Claude Code transcripts (required); a logged-in `claude` CLI on
-`PATH` (for summaries); `gh` (for issue matching); Claude Desktop (for Cowork sessions).
+`PATH` (for summaries); Claude Desktop (for Cowork sessions).
 
 ## Not goals
 
@@ -142,7 +143,7 @@ python3 -m unittest discover tests
 The suite runs against synthetic transcripts in `tests/fixtures/` and never touches your real
 board, config or transcripts: each test imports its own copy of `server.py` with
 `LOGBOOK_DATA_DIR`, `LOGBOOK_CONFIG`, `CLAUDE_PROJECTS_DIR` and `COWORK_SESSIONS_DIR` pointed at a
-temp dir, and with no `claude` or `gh` on `PATH`, so it makes no LLM or network calls. CI runs it
+temp dir, and with no `claude` on `PATH`, so it makes no LLM or network calls. CI runs it
 on macOS and Linux (`.github/workflows/test.yml`).
 
 ## License
