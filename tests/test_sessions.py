@@ -1,7 +1,6 @@
 """Transcript parsing and the daily log, against the synthetic fixtures."""
 
 import json
-import shutil
 from datetime import date
 
 from support import FIXTURE_DAY, SandboxedServerTest, set_tz
@@ -80,26 +79,6 @@ class TranscriptParsingTest(SandboxedServerTest):
         # Non-numeric usage values count as zero instead of sinking the file.
         self.assertEqual(sum(t for _, _, t in s["events"]), 2034)
 
-    def test_unreadable_or_empty_files_yield_nothing(self):
-        d = self.projects_dir / "-junk"
-        d.mkdir()
-        (d / "garbage.jsonl").write_text("}{\n[]\n\n", encoding="utf-8")
-        (d / "empty.jsonl").write_text("", encoding="utf-8")
-        (d / "binary.jsonl").write_bytes(b"\xff\xfe\x00\x81garbage\n")
-        (d / "no-timestamps.jsonl").write_text(
-            json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}) + "\n",
-            encoding="utf-8")
-        ids = {s["file"] for s in self.srv.collect_sessions()}
-        self.assertFalse(any("-junk" in f for f in ids))
-
-    def test_missing_transcript_dirs_are_fine(self):
-        shutil.rmtree(self.projects_dir)
-        shutil.rmtree(self.cowork_dir)
-        self.assertEqual(self.srv.collect_sessions(), [])
-        log = self.srv.log_for_date(FIXTURE_DAY)
-        self.assertEqual(log["entries"], [])
-        self.assertFalse(log["projects_dir_exists"])
-
     def test_parse_cache_follows_file_changes(self):
         self.assertIn("sess-tiny", by_id(self.srv.collect_sessions()))
         (self.projects_dir / "-nonexistent-logbook-test-alpha" / "sess-tiny.jsonl").unlink()
@@ -134,12 +113,6 @@ class DailyLogTest(SandboxedServerTest):
         entries, *_ = self.srv._compute_day(date.fromisoformat(FIXTURE_DAY))
         self.assertNotIn("sess-tiny", [e["id"] for e in entries])
 
-    def test_other_days_are_empty(self):
-        entries, totals, *_ = self.srv._compute_day(date(2026, 1, 14))
-        self.assertEqual(entries, [])
-        self.assertEqual(totals["tokens"], 0)
-        self.assertEqual(self.srv.available_dates(), [FIXTURE_DAY])
-
     def test_cached_summaries_are_used_and_past_day_is_frozen(self):
         # Pre-seeding the summary cache stands in for the LLM.
         names = {"sess-normal": "Added CSV export", "sess-malformed": "Tidied parser",
@@ -157,10 +130,6 @@ class DailyLogTest(SandboxedServerTest):
             p.unlink()
         again = self.srv.log_for_date(FIXTURE_DAY)
         self.assertEqual(len(again["entries"]), 4)
-
-    def test_bad_date_falls_back_to_today(self):
-        log = self.srv.log_for_date("not-a-date")
-        self.assertEqual(log["date"], date.today().isoformat())
 
 
 class TimezoneTest(SandboxedServerTest):

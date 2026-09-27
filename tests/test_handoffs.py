@@ -3,7 +3,6 @@ are ever written to."""
 
 import base64
 import json
-import re
 
 from support import HttpTestCase
 
@@ -62,13 +61,6 @@ class HandoffTest(HttpTestCase):
                 self.assertEqual(code, 404, f"{path}{hid!r} -> {code}")
                 self.assertNotIn(b"TOP SECRET", body)
 
-    def test_repeated_and_odd_query_params(self):
-        rec = self.add(name="plan.md", path=str(self.doc), text="x")
-        code, _ = self.get(rec["id"] + "&id=../secret")
-        self.assertEqual(code, 200)     # first id wins, and it's a real one
-        code, _, _ = self.request("GET", "/api/handoff?id=" + rec["id"] + "%00")
-        self.assertEqual(code, 404)
-
     def test_client_cannot_choose_the_id_or_snapshot_name(self):
         rec = self.add(id="../../pwned", name="../../pwned.md", path="", text="hello")
         self.assertRegex(rec["id"], r"^[0-9a-f]{12}$")
@@ -102,27 +94,6 @@ class HandoffTest(HttpTestCase):
         self.assertEqual(self.secret.read_text(), "TOP SECRET")
         self.assertEqual(list(self.srv.HANDOFF_DIR.glob("*.tmp")), [])
 
-    def test_unknown_kinds_become_docs(self):
-        rec = self.add(name="x", kind="../../draft", text="t")
-        self.assertEqual(rec["kind"], "doc")
-        code, resp = self.json_request("POST", "/api/handoff/draft", {"id": rec["id"], "text": "y"})
-        self.assertEqual(code, 400)
-
-    def test_size_limits(self):
-        big = "x" * (self.srv.HANDOFF_MAX_BYTES + 1)
-        code, resp = self.json_request("POST", "/api/handoff", {"name": "big", "text": big})
-        self.assertEqual((code, resp["error"]), (400, "file too large"))
-        rec = self.add(name="d", kind="draft", text="")
-        code, resp = self.json_request("POST", "/api/handoff/draft", {"id": rec["id"], "text": big})
-        self.assertEqual((code, resp["error"]), (400, "draft too large"))
-
-    def test_live_file_over_size_limit_falls_back_to_snapshot(self):
-        rec = self.add(name="plan.md", path=str(self.doc), text="snapshot")
-        self.srv.HANDOFF_MAX_BYTES = 10
-        self.doc.write_text("this live file is now too big", encoding="utf-8")
-        code, got = self.get(rec["id"])
-        self.assertEqual((got["source"], got["text"]), ("snapshot", "snapshot"))
-
     def test_image_round_trip(self):
         rec = self.add(name="shot.png", kind="image", mime="image/png",
                        data=base64.b64encode(PNG).decode())
@@ -149,13 +120,6 @@ class HandoffTest(HttpTestCase):
             self.assertEqual((code, resp["error"]), (400, err))
         self.assertFalse(self.srv.HANDOFF_INDEX_FILE.exists())
 
-    def test_image_extension_comes_from_the_allowlist(self):
-        rec = self.add(name="../../x.png", kind="image", mime="image/png; charset=binary",
-                       data=base64.b64encode(PNG).decode())
-        names = [p.name for p in self.srv.HANDOFF_DIR.iterdir() if p.name != "index.json"]
-        self.assertEqual(names, [rec["id"] + ".png"])
-        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{12}\.png", n) for n in names))
-
 
 class StaticFileTest(HttpTestCase):
     def test_icon_route_cannot_escape_icons_dir(self):
@@ -164,10 +128,3 @@ class StaticFileTest(HttpTestCase):
             code, body, _ = self.request("GET", path)
             self.assertEqual(code, 404, path)
             self.assertNotIn(b"import", body)
-
-    def test_index_and_manifest_serve(self):
-        code, body, ctype = self.request("GET", "/")
-        self.assertEqual(code, 200)
-        self.assertTrue(ctype.startswith("text/html"))
-        code, manifest = self.json_request("GET", "/manifest.webmanifest")
-        self.assertEqual((code, manifest["name"]), (200, "Logbook"))

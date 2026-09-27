@@ -994,12 +994,16 @@ function linkIssueFromText(item, text, quiet) {
 }
 
 // Pasting a lone GitHub issue/PR URL into a title links it instead of
-// turning the title into a URL. Any other paste goes through untouched.
+// turning the title into a URL. Any other paste (including other github.com
+// links) goes through untouched.
 function issuePasteHandler(item) {
   return e => {
     const text = (e.clipboardData?.getData("text/plain") || "").trim();
-    if (!/^https?:\/\/(www\.)?github\.com\//i.test(text) || /\s/.test(text)) return;
+    if (/\s/.test(text) || !parseIssueUrl(text)) return;
     e.preventDefault();
+    // Commit any unsaved title edit (titles save on blur) before the
+    // re-render that linking triggers destroys this element.
+    e.currentTarget.blur();
     linkIssueFromText(item, text);
   };
 }

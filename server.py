@@ -1281,7 +1281,12 @@ class Handler(BaseHTTPRequestHandler):
 # instead. Holding 127.0.0.1 and ::1 both means every `localhost` connection
 # reaches Logbook: a server on the same exact address can't bind at all, and
 # one on the wildcard is outranked, since the kernel routes to the most
-# specific bind. Never a public interface.
+# specific bind. Caveat on macOS: a wildcard server started *after* Logbook
+# (plain `python3 -m http.server PORT`, which sets SO_REUSEADDR) still binds
+# and answers on LAN addresses, but never on 127.0.0.1, ::1 or `localhost`.
+# One started *before* Logbook is caught by port_taken_by(). Nothing short of
+# binding the wildcard ourselves would stop it, and that would expose Logbook
+# to the network. Never a public interface.
 # --------------------------------------------------------------------------- #
 class PortInUse(RuntimeError):
     pass

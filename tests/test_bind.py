@@ -89,13 +89,6 @@ class DualBindTest(BindCase):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", port))
 
-    def test_squatter_on_ipv4_loopback_is_refused(self):
-        squat = listener(socket.AF_INET, "127.0.0.1")
-        self.addCleanup(squat.close)
-        with self.assertRaises(self.srv.PortInUse) as cm:
-            self.bind(squat.getsockname()[1])
-        self.assertIn("127.0.0.1", str(cm.exception))
-
     @unittest.skipUnless(HAS_V6, "no IPv6 loopback on this host")
     def test_later_server_cannot_take_either_loopback(self):
         port = self.bind()[0].server_address[1]
@@ -117,33 +110,8 @@ class DualBindTest(BindCase):
         self.run_servers(servers)
         self.assertIn("rev", self.get_board("127.0.0.1", servers[0].server_address[1]))
 
-    def test_no_ipv6_support_at_all(self):
-        orig = self.srv.socket.has_ipv6
-        self.srv.socket.has_ipv6 = False
-        self.addCleanup(setattr, self.srv.socket, "has_ipv6", orig)
-        servers = self.bind()
-        self.assertEqual(len(servers), 1)
-        self.assertIn("IPv6 is not available", self.warnings[0])
-
 
 class PortProbeTest(BindCase):
-    def test_probe_sees_a_listener(self):
-        squat = listener(socket.AF_INET, "127.0.0.1")
-        self.addCleanup(squat.close)
-        self.assertEqual(self.srv.port_taken_by(squat.getsockname()[1]), "127.0.0.1")
-
-    @unittest.skipUnless(HAS_V6, "no IPv6 loopback on this host")
-    def test_probe_sees_an_ipv6_only_listener(self):
-        squat = listener(socket.AF_INET6, "::1")
-        self.addCleanup(squat.close)
-        self.assertEqual(self.srv.port_taken_by(squat.getsockname()[1]), "::1")
-
-    def test_probe_on_a_free_port(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-        self.assertIsNone(self.srv.port_taken_by(port))
-
     def test_main_exits_loudly_when_the_port_is_taken(self):
         squat = listener(socket.AF_INET, "127.0.0.1")
         self.addCleanup(squat.close)

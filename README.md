@@ -84,7 +84,9 @@ CLAUDE_PROJECTS_DIR=/path/to/projects python3 server.py
 ```
 
 The server listens on the loopback addresses only (`127.0.0.1` and `::1`), and refuses to start if
-another server already holds the port. The only thing that leaves your machine is the headless
+another server already holds the port. On macOS a server started later on all addresses (a plain
+`python3 -m http.server PORT`) can still start beside it, but `localhost`, `127.0.0.1` and `::1`
+keep reaching Logbook; it only gets traffic from other interfaces. The only thing that leaves your machine is the headless
 `claude` calls that write summaries.
 
 To link a GitHub issue or PR to a card, paste its URL into the card's title, drag the link onto
