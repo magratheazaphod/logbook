@@ -48,7 +48,8 @@ cd logbook
 
 Run it from your normal terminal: the agent copies that shell's `PATH` so `claude` resolves for
 day summaries. Re-running replaces the install cleanly. `./uninstall.sh` removes it (your data
-stays). Both take `PORT=8788` and `LOGBOOK_LABEL=my.logbook` overrides; `./install.sh --dry-run`
+stays). Both take `PORT=8790` and `LOGBOOK_LABEL=my.logbook` overrides (pass the same ones to `./restart.sh`); if an agent under that label already serves a
+different port, they refuse rather than move it unless you add `LOGBOOK_REPLACE=1`. `./install.sh --dry-run`
 prints the plist without changing anything. If another process already holds the port, the
 installer stops and names it. The log goes to `~/logbook-server.log` (`LOGBOOK_LOG` to change).
 On Linux, run `python3 server.py` under your own supervisor instead.

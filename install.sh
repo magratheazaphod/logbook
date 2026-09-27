@@ -11,6 +11,8 @@
 #
 # Overrides: PORT (default 8787), LOGBOOK_LABEL (default: config.json
 # launchdLabel, else local.logbook), LOGBOOK_LOG (default ~/logbook-server.log).
+# An existing agent under the label that serves a different port is left alone
+# unless LOGBOOK_REPLACE=1 (so a PORT-only override can't hijack a live one).
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -20,7 +22,7 @@ DRY_RUN=0
 case "${1:-}" in
   "") ;;
   --dry-run|-n) DRY_RUN=1 ;;
-  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
 esac
 
@@ -41,6 +43,17 @@ if [ -z "$PYTHON" ]; then
   exit 1
 fi
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+# PORT recorded in an installed plist (empty if none or unreadable).
+installed_port() {
+  python3 -c '
+import plistlib, sys
+try:
+    print(plistlib.load(open(sys.argv[1], "rb")).get("EnvironmentVariables", {}).get("PORT", ""))
+except Exception:
+    pass
+' "$1" 2>/dev/null || true
+}
 
 render() {
   L_LABEL="$LABEL" L_PYTHON="$PYTHON" L_WORKDIR="$ROOT" L_HOME="$HOME" \
@@ -80,6 +93,17 @@ TARGET="$DOMAIN/$LABEL"
 URL="http://localhost:$PORT/api/board"
 
 # --- replace an earlier install under this label ----------------------------
+old_port="$(installed_port "$PLIST")"
+if [ -n "$old_port" ] && [ "$old_port" != "$PORT" ] && [ "${LOGBOOK_REPLACE:-0}" != 1 ]; then
+  cat >&2 <<MSG
+A LaunchAgent labelled $LABEL is already installed on port $old_port, and
+you asked for port $PORT. Nothing was changed.
+
+  To run a second Logbook alongside it:  LOGBOOK_LABEL=my.logbook2 PORT=$PORT ./install.sh
+  To move the existing one to $PORT:       LOGBOOK_REPLACE=1 PORT=$PORT ./install.sh
+MSG
+  exit 1
+fi
 if launchctl print "$TARGET" >/dev/null 2>&1; then
   echo "Replacing existing LaunchAgent $LABEL"
   launchctl bootout "$TARGET" 2>/dev/null || true
@@ -100,7 +124,7 @@ if holder=$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null) && [ -n "$holder" ]
   echo >&2
   echo "Stop that process (it may be a hand-started 'python3 server.py', or" >&2
   echo "another Logbook LaunchAgent under a different label), or pick another" >&2
-  echo "port:  PORT=8788 ./install.sh" >&2
+  echo "port:  PORT=8790 ./install.sh" >&2
   exit 1
 fi
 
@@ -122,7 +146,8 @@ for _ in $(seq 1 40); do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null || true)
   if [ "$code" = "200" ]; then
     echo "Logbook running at http://localhost:$PORT  (label $LABEL, log $LOG)"
-    [ "$PORT" = 8787 ] || echo "Note: ./restart.sh needs PORT=$PORT too."
+    [ "$PORT" = 8787 ] || echo "Note: ./restart.sh and ./uninstall.sh need PORT=$PORT too."
+    [ -n "${LOGBOOK_LABEL:-}" ] && echo "Note: ./restart.sh and ./uninstall.sh need LOGBOOK_LABEL=$LABEL too."
     exit 0
   fi
   sleep 0.5

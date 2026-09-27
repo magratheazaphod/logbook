@@ -67,3 +67,4 @@ jobs:
           if ./install.sh 2> err.txt; then echo "expected failure"; exit 1; fi
           grep -q "python3 server.py" err.txt
           cat err.txt
+          ./uninstall.sh | grep -q "Nothing to uninstall"

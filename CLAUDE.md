@@ -42,7 +42,9 @@ but took about 124s of wall time, and every request that parsed transcripts craw
 `config.json` `launchdLabel`, else `local.logbook`; the invoking shell's `PATH`; `ProcessType`
 `Interactive`; `RunAtLoad` + `KeepAlive`; `WorkingDirectory` = the repo) into
 `~/Library/LaunchAgents/<label>.plist`, loads it with `launchctl bootstrap`, and health-checks
-`/api/board`. Re-running boots out the old job first. It refuses when another process listens on
+`/api/board`. Re-running boots out the old job first, but if the installed plist serves a
+different `PORT` both scripts refuse unless `LOGBOOK_REPLACE=1` (a PORT-only override must not
+hijack the live agent). `restart.sh` honours `LOGBOOK_LABEL` too. It refuses when another process listens on
 `PORT`. `./uninstall.sh` boots it out and deletes the plist; data is untouched. `--dry-run`
 prints the plist (works on Linux; CI checks it). To test installer changes, use a scratch copy,
 a spare `PORT` and a throwaway `LOGBOOK_LABEL`, never the live label.
