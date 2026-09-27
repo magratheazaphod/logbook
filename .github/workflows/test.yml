@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        # "system" is the OS's own /usr/bin/python3 (3.9 on macOS), the
+        # interpreter a fresh install actually runs server.py with.
+        python: [system, "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: matrix.python != 'system'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Pick interpreter
+        run: |
+          if [ "${{ matrix.python }}" = "system" ]; then
+            echo "PY=/usr/bin/python3" >> "$GITHUB_ENV"
+          else
+            echo "PY=python" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run tests
+        run: |
+          "$PY" --version
+          "$PY" -m unittest discover -v tests

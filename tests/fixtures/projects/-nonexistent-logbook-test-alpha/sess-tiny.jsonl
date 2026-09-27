@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"sess-tiny","cwd":"/nonexistent-logbook-test/alpha","timestamp":"2026-01-15T11:00:00Z","message":{"role":"user","content":"What does this flag do?"}}
+{"type":"assistant","sessionId":"sess-tiny","timestamp":"2026-01-15T11:00:30Z","message":{"role":"assistant","content":"It enables verbose mode.","usage":{"input_tokens":400,"output_tokens":99}}}

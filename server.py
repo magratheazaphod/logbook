@@ -30,7 +30,9 @@ from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+# Runtime data (board, handoffs, caches, backups). LOGBOOK_DATA_DIR points it
+# elsewhere - the test suite uses this to keep every write inside a temp dir.
+DATA_DIR = Path(os.environ.get("LOGBOOK_DATA_DIR") or ROOT / "data").expanduser()
 BOARD_FILE = DATA_DIR / "board.json"
 BOARD_BACKUP_DIR = DATA_DIR / "backups"
 BOARD_BACKUP_KEEP = 60
@@ -70,7 +72,8 @@ COWORK_SESSIONS_DIR = Path(
 # Personal settings live in config.json beside this file (gitignored; copy
 # config.example.json to start one). Every key is optional and a missing or
 # unreadable file just means the defaults, so a fresh clone runs as-is.
-CONFIG_FILE = ROOT / "config.json"
+# LOGBOOK_CONFIG overrides the path (used by the tests).
+CONFIG_FILE = Path(os.environ.get("LOGBOOK_CONFIG") or ROOT / "config.json").expanduser()
 
 
 def _load_config():
@@ -86,11 +89,23 @@ def _load_config():
 
 CONFIG = _load_config()
 
+
+def _config_strings(*keys):
+    """A list of strings from CONFIG at the nested `keys`, or [] when any level
+    is missing or the wrong type - a hand-edited config must degrade to the
+    defaults, never crash the server at import."""
+    value = CONFIG
+    for k in keys:
+        value = value.get(k) if isinstance(value, dict) else None
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, str) and v]
+
 # Cowork sessions to leave out of the log, keyed by cliSessionId (the
 # transcript filename's stem) - e.g. onboarding chats not worth logging as
 # work. New Cowork sessions are included by default: this is a skip-list for
 # known-junk history, not an allowlist.
-COWORK_SESSION_DENYLIST = set(CONFIG.get("coworkSkipSessions", []))
+COWORK_SESSION_DENYLIST = set(_config_strings("coworkSkipSessions"))
 
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -311,12 +326,15 @@ def canonical_project(path):
 def event_tokens(usage):
     if not isinstance(usage, dict):
         return 0
-    return (
-        usage.get("input_tokens", 0)
-        + usage.get("output_tokens", 0)
-        + usage.get("cache_creation_input_tokens", 0)
-        + usage.get("cache_read_input_tokens", 0)
-    )
+    # Only count real numbers: one odd value (null, a string) must not raise
+    # and take the whole transcript down with it.
+    total = 0
+    for key in ("input_tokens", "output_tokens",
+                "cache_creation_input_tokens", "cache_read_input_tokens"):
+        v = usage.get(key, 0)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            total += int(v)
+    return total
 
 
 def read_session_file(path, project_override=None, title_override=None, source="cli"):
@@ -429,8 +447,8 @@ CLAUDE_BIN = shutil.which("claude")
 # --------------------------------------------------------------------------- #
 GH_BIN = shutil.which("gh")
 # Off unless config.json names owners (every repo of a user/org) or repos.
-ISSUE_MATCH_OWNERS = list(CONFIG.get("issueMatch", {}).get("owners", []))
-ISSUE_MATCH_REPOS = list(CONFIG.get("issueMatch", {}).get("repos", []))
+ISSUE_MATCH_OWNERS = _config_strings("issueMatch", "owners")
+ISSUE_MATCH_REPOS = _config_strings("issueMatch", "repos")
 
 
 _SEARCH_STOPWORDS = {
@@ -1342,7 +1360,10 @@ class Handler(BaseHTTPRequestHandler):
                 # A client that loaded the board earlier than the last write
                 # (a tab left open for days, say) must not silently clobber
                 # everything saved since — hand it the fresh board instead.
-                if data.get("rev") != current.get("rev"):
+                # JSON `true` equals 1 and `3.0` equals 3 in Python; only an
+                # exact integer revision number counts.
+                rev = data.get("rev")
+                if type(rev) is not int or rev != current.get("rev"):
                     self._send(409, {"error": "stale", "board": current})
                     return
                 board = {

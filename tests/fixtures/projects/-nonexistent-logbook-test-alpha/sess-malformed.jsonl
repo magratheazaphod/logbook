@@ -1,0 +1,13 @@
+not json at all
+[1, 2, 3]
+"just a string"
+null
+
+{"type":"file-history-snapshot","snapshot":{"files":[]}}
+{"type":"some-future-event","timestamp":"2026-01-15T12:00:00Z","payload":{"x":1}}
+{"type":"user","sessionId":"sess-malformed","cwd":"/nonexistent-logbook-test/alpha","timestamp":"2026-01-15T12:00:00Z","message":{"role":"user","content":"Tidy up the parser"}}
+{"type":"user","timestamp":"not-a-timestamp","message":{"role":"user","content":"event with a bad timestamp"}}
+{"type":"assistant","timestamp":"2026-01-15T12:00:10Z","message":"a message that is not an object"}
+{"type":"assistant","timestamp":"2026-01-15T12:00:20Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}],"usage":{"input_tokens":"lots","output_tokens":null,"cache_read_input_tokens":true}}}
+{"type":"assistant","timestamp":"2026-01-15T12:00:30Z","message":{"role":"assistant","content":[{"type":"text","text":"Parser tidied."}],"usage":{"input_tokens":2000,"output_tokens":34}}}
+{"type":"user","timestamp":"2026-01-15T12:0

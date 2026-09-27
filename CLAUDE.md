@@ -21,7 +21,8 @@ launchctl print gui/$(id -u)/<label>   # check it's loaded/running
 launchd, so `KeepAlive` can't race a manual relaunch and start a second copy on the port); it
 falls back to a manual `nohup python3 server.py` only if the launchd job isn't loaded at all.
 
-Env overrides: `PORT=9000`, `CLAUDE_PROJECTS_DIR=/path/to/projects` (set via the plist's
+Env overrides: `PORT=9000`, `CLAUDE_PROJECTS_DIR=/path/to/projects`, `COWORK_SESSIONS_DIR`,
+`LOGBOOK_DATA_DIR` (default `data/`), `LOGBOOK_CONFIG` (default `config.json`) (set via the plist's
 `EnvironmentVariables` for the launchd path, or exported before `./restart.sh`'s fallback path).
 
 `index.html` (and the rest of the front end) is read fresh per request, so UI changes only
@@ -43,6 +44,8 @@ logbook/
   index.html       # single-page UI (vanilla JS). Must sit beside server.py.
   README.md        # human-facing setup notes
   CLAUDE.md        # this file
+  tests/           # stdlib unittest suite + synthetic .jsonl fixtures
+  .github/workflows/test.yml   # CI: macOS + Linux, system python3 and a newer one
   icons/
     make-icons.py  # holds the app-icon art; regenerates every SVG/PNG/ICO below
     *.svg *.png    # generated — edit make-icons.py, never these
@@ -105,6 +108,21 @@ logbook/
   real Dock icon and a chromeless window.
 - Server binds to `127.0.0.1` only; no outbound calls. Parser is defensive and skips transcript
   lines it doesn't recognize, so a Claude Code format change degrades gracefully.
+
+## Tests
+
+```bash
+python3 -m unittest discover tests
+```
+
+Covers transcript parsing (normal CLI, worktree, Cowork sidecar, malformed lines, the
+sub-1000-token filter, timezones), the board `rev` 409 guard and daily backups, handoff path
+safety (ids can't escape, only drafts are writable) and `config.json` loading. `tests/support.py`
+imports a fresh `server.py` per test with every path (`LOGBOOK_DATA_DIR`, `LOGBOOK_CONFIG`,
+`CLAUDE_PROJECTS_DIR`, `COWORK_SESSIONS_DIR`) in a temp dir and an empty `PATH`, and asserts
+that before any test runs - so tests can never touch the live board or trigger a billable
+`claude -p` call. Keep it that way: add new paths to that assertion list. Must pass on the
+macOS system `/usr/bin/python3` (3.9), so no 3.10+ syntax in `server.py` or the tests.
 
 ## Contributing
 

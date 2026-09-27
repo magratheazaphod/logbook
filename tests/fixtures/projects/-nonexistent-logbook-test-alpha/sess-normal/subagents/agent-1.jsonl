@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"agent-1","cwd":"/nonexistent-logbook-test/alpha","timestamp":"2026-01-15T10:02:00Z","message":{"role":"user","content":"Subagent task that must not be logged"}}
+{"type":"assistant","sessionId":"agent-1","timestamp":"2026-01-15T10:03:00Z","message":{"role":"assistant","content":"done","usage":{"input_tokens":5000}}}

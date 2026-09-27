@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"cw-skip","cwd":"/sessions/brave-owl","timestamp":"2026-01-15T17:00:00Z","message":{"role":"user","content":"Onboarding chat to skip"}}
+{"type":"assistant","sessionId":"cw-skip","timestamp":"2026-01-15T17:01:00Z","message":{"role":"assistant","content":"Hi!","usage":{"input_tokens":3000}}}
