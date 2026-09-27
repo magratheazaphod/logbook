@@ -11,8 +11,9 @@ The server runs as a launchd LaunchAgent (`~/Library/LaunchAgents/<label>.plist`
 the label set as `launchdLabel` in `config.json`): `RunAtLoad` + `KeepAlive` means it comes up on login/reboot and
 relaunches itself if it ever crashes, at `http://localhost:8787`.
 
+From the repo root:
+
 ```bash
-cd ~/projects/logbook
 ./restart.sh                       # relaunch cleanly after editing server.py
 launchctl print gui/$(id -u)/<label>   # check it's loaded/running
 ```
@@ -80,7 +81,7 @@ logbook/
   An agent or cron job can append items to this file directly (preserve the `rev` field).
 - **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
   current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
-  clobbering newer saves — this once lost days of task history to a long-lived stale tab).
+  clobbering newer saves from another tab or an agent).
   The UI also resyncs whenever its tab regains focus. Server bumps `rev` on every write.
 - **Backups**: before the first board write of each day, the server snapshots the previous
   state to `data/backups/board-YYYY-MM-DD.json` (kept 60 days, gitignored).
@@ -150,9 +151,7 @@ macOS system `/usr/bin/python3` (3.9), so no 3.10+ syntax in `server.py` or the 
 ## Contributing
 
 Work on a branch and merge it, never commit straight to `main`. Even for a one-line fix:
-branch, commit, open a PR (`gh pr create`), merge it. PRs #1-#3 followed this; a long run of
-direct-to-main commits after them did not, which is the habit being corrected here - the
-history stays as it is, but new work goes through a branch.
+branch, commit, open a PR (`gh pr create`), merge it.
 
 Merge with `--no-ff` so each fix stays a reviewable unit rather than dissolving into `main`'s
 commit stream.
