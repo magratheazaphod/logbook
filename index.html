@@ -1539,10 +1539,14 @@ function addTask() {
   inp.value = ""; renderTasks(); save();
 }
 // Content topics (articles, episodes, videos) reuse the idea card as-is.
-// Once a card's post date arrives it lives only in that day's Focus (today's
-// also holds overdue ones), so a card is never listed twice; clearing its date
-// (or dragging it back here) returns it to this list. Future dates stay here.
-function inFocusOnly(c) { return !!c.postDate && c.postDate <= todayKey(); }
+// A card dated today, or dated earlier and done, lives only in the Focus
+// panel, so a card is never listed twice; clearing its date (or dragging it
+// back here) returns it to this list. Future dates stay here, and so does a
+// past-due card that isn't done - flagged red, so it can't be forgotten.
+function inFocusOnly(c) {
+  const today = todayKey();
+  return !!c.postDate && (c.postDate === today || (c.postDate < today && c.status === "done"));
+}
 function renderContent() {
   registerList("content", board.content, onContentChange, "content");
   const list = $("#contentList"); list.innerHTML = "";
@@ -1588,7 +1592,7 @@ function renderTodayFocus(container, dateKey) {
   board.dayPlans ||= {};
   const plan = board.dayPlans[dateKey];
 
-  const due = contentDue(dateKey, isToday);
+  const due = contentDue(dateKey);
   if (!isToday && !due.length && (!plan || (!plan.tasks?.length && !plan.ideas?.length))) {
     return; // nothing to show for a past/future day with no history
   }
@@ -1603,11 +1607,10 @@ function renderTodayFocus(container, dateKey) {
 
 // Content isn't dragged into a day plan like tasks and ideas - it's
 // scheduled by its post date, so the day's list is derived from the board.
-// Today also carries anything overdue and still unposted, so a missed date
-// keeps nagging instead of silently passing.
-function contentDue(dateKey, isToday) {
-  return (board.content || []).filter(c => c.postDate && (
-    c.postDate === dateKey || (isToday && c.postDate < dateKey && c.status !== "done")));
+// Overdue, unposted cards go back to the Content list (flagged red) rather
+// than piling up in today's Focus.
+function contentDue(dateKey) {
+  return (board.content || []).filter(c => c.postDate === dateKey);
 }
 
 // The date the visible Focus panel's Content block schedules drops onto.
