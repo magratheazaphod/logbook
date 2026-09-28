@@ -1446,11 +1446,18 @@ function postDateRow(item, onChange) {
   const txt = el("span"); txt.textContent = "post";
   const inp = el("input"); inp.type = "date"; inp.value = item.postDate || "";
   inp.setAttribute("aria-label", "Post date");
-  inp.addEventListener("change", () => {
+  // Chrome fires "change" on every keystroke that forms a valid date, so typing
+  // a year commits "0020" after two digits and the re-render steals the field.
+  // While it has focus, wait for blur or Enter to commit.
+  const commit = () => {
+    if ((item.postDate || "") === inp.value) return;
     if (inp.value) item.postDate = inp.value; else delete item.postDate;
     item.updated = new Date().toISOString();
     onChange(); save();
-  });
+  };
+  inp.addEventListener("change", () => { if (document.activeElement !== inp) commit(); });
+  inp.addEventListener("blur", commit);
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
   wrap.append(txt, inp);
   return wrap;
 }
