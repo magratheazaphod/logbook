@@ -862,17 +862,21 @@ def regenerate_day_summary(day_str):
     return text
 
 
+def parse_day(day_str):
+    """Strict YYYY-MM-DD -> date, or ValueError. Newer Pythons'
+    fromisoformat also takes forms like 20260927, which would key the caches
+    under a second spelling of the same day."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(day_str)):
+        raise ValueError(f"bad date {day_str!r}, expected YYYY-MM-DD")
+    return date.fromisoformat(day_str)
+
+
 def log_for_date(day_str):
     """Build the day's log, with entries/totals frozen to disk for any day
     that's already over — so revisiting a past day always shows exactly what
     it showed before, instead of session summaries or stats drifting. Today's
     log is never cached since it's still being written."""
-    try:
-        target = date.fromisoformat(day_str)
-    except Exception:
-        target = date.today()
-        day_str = target.isoformat()
-
+    target = parse_day(day_str)
     is_past = target < date.today()
     cache = _load_day_log_cache() if is_past else {}
     cached = cache.get(day_str)
@@ -1203,7 +1207,12 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/log":
                 q = parse_qs(parsed.query)
                 day = (q.get("date", [date.today().isoformat()])[0])
-                self._send(200, log_for_date(day))
+                try:
+                    log = log_for_date(day)
+                except ValueError as e:
+                    self._send(400, {"error": str(e)})
+                else:
+                    self._send(200, log)
             else:
                 self._send(404, {"error": "not found"})
         except Exception as e:
@@ -1252,8 +1261,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 day = str(data.get("date", "")).strip()
                 text = str(data.get("text", "")).strip()
-                if not day:
-                    raise ValueError("missing date")
+                parse_day(day)
                 set_day_summary(day, text)
                 self._send(200, {"ok": True})
             except Exception as e:
@@ -1261,8 +1269,7 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/day-summary/regenerate":
             try:
                 day = str(data.get("date", "")).strip()
-                if not day:
-                    raise ValueError("missing date")
+                parse_day(day)
                 text = regenerate_day_summary(day)
                 self._send(200, {"text": text})
             except Exception as e:

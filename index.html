@@ -1685,7 +1685,7 @@ function readOnlyRow(item, kind) {
 
 // ---- daily log ---------------------------------------------------------
 let logDate = new Date();
-const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const iso = d => `${String(d.getFullYear()).padStart(4, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function fmtTokens(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
@@ -1812,7 +1812,8 @@ async function loadLogOnce() {
       .finally(() => { regenBtn.disabled = false; });
   });
   summaryRow.appendChild(regenBtn);
-  out.appendChild(summaryRow);
+  // A day that hasn't happened has nothing to summarize.
+  if (summaryDate <= todayKey()) out.appendChild(summaryRow);
 
   const focusContainer = el("div", "");
   focusContainer.id = "todayFocus";
@@ -1960,9 +1961,19 @@ async function boot() {
   $("#prevDay").onclick = () => shiftDay(-1);
   $("#nextDay").onclick = () => shiftDay(1);
   $("#todayBtn").onclick = () => { logDate = new Date(); loadLog(); };
-  $("#datePick").addEventListener("change", e => {
-    if (e.target.value) { logDate = new Date(e.target.value + "T12:00:00"); loadLog(); }
-  });
+  // Chrome fires "change" on each keystroke that forms a valid date, so typing
+  // a year would jump to year 0002 after one digit. While the field has focus,
+  // wait for blur or Enter before moving the log.
+  const datePick = $("#datePick");
+  const goToPicked = () => {
+    const v = datePick.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v < "1970-01-01") { datePick.value = iso(logDate); return; }
+    if (v === iso(logDate)) return;
+    logDate = new Date(v + "T12:00:00"); loadLog();
+  };
+  datePick.addEventListener("change", () => { if (document.activeElement !== datePick) goToPicked(); });
+  datePick.addEventListener("blur", goToPicked);
+  datePick.addEventListener("keydown", e => { if (e.key === "Enter") datePick.blur(); });
 
   $("#undobtn").onclick = () => {
     const restore = undoSlot;
