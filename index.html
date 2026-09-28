@@ -832,18 +832,18 @@ function handleDrop(e, targetListId, targetId) {
   const fromId = payload && payload.id, fromListId = payload && payload.listId;
   const from = DND[fromListId], to = DND[targetListId];
   if (!fromId || !from || !to) return;
-  if (targetListId === "today-content") {
+  if (targetListId === "day-content") {
     const item = board.content.find(x => x.id === fromId);
     if (!item || fromListId !== "content") return;
-    item.postDate = todayKey(); item.updated = new Date().toISOString();
+    item.postDate = focusContentDate; item.updated = new Date().toISOString();
     onContentChange(); save();
     return;
   }
-  // A card due today shows only in the Focus panel, so dropping it on the
-  // Content list means "not today": clear the date to bring it back.
+  // A card dated today or earlier shows only in the Focus panel, so dropping
+  // it on the Content list means "not scheduled": clear the date to bring it back.
   if (targetListId === "content" && fromListId === "content") {
     const item = board.content.find(x => x.id === fromId);
-    if (item && contentDue(todayKey(), true).includes(item)) {
+    if (item && inFocusOnly(item)) {
       delete item.postDate; item.updated = new Date().toISOString();
     }
   }
@@ -1078,7 +1078,7 @@ function syncHandoffs(item) {
 function refreshAfterHandoff() {
   renderTasks(); renderIdeas(); renderContent();
   const tf = $("#todayFocus");
-  if (tf?.querySelector("ul[data-list-id]")) renderTodayFocus(tf, todayKey());
+  if (tf && focusContentDate) renderTodayFocus(tf, focusContentDate);
 }
 
 // A dragged-in file is handled once, at the document level, in the capture
@@ -1539,17 +1539,18 @@ function addTask() {
   inp.value = ""; renderTasks(); save();
 }
 // Content topics (articles, episodes, videos) reuse the idea card as-is.
-// Anything due in today's Focus lives only there, so a card is never listed
-// twice; clearing its date (or dragging it back here) returns it to this list.
+// Once a card's post date arrives it lives only in that day's Focus (today's
+// also holds overdue ones), so a card is never listed twice; clearing its date
+// (or dragging it back here) returns it to this list. Future dates stay here.
+function inFocusOnly(c) { return !!c.postDate && c.postDate <= todayKey(); }
 function renderContent() {
   registerList("content", board.content, onContentChange, "content");
   const list = $("#contentList"); list.innerHTML = "";
-  const dueNow = new Set(contentDue(todayKey(), true));
-  const shown = board.content.filter(c => !dueNow.has(c));
+  const shown = board.content.filter(c => !inFocusOnly(c));
   $("#contentCount").textContent = shown.length ? `${shown.length}` : "";
   if (!shown.length) {
     const e = el("div", "empty");
-    e.textContent = dueNow.size ? "Everything else is in today's Content." : "Articles, episodes and videos to make.";
+    e.textContent = board.content.length ? "Everything else is scheduled in a day's Content." : "Articles, episodes and videos to make.";
     list.appendChild(e); return;
   }
   for (const item of shown) list.appendChild(ideaRow(item, "content"));
@@ -1560,7 +1561,7 @@ function renderContent() {
 function onContentChange() {
   renderContent();
   const tf = $("#todayFocus");
-  if (tf && iso(logDate) === todayKey()) renderTodayFocus(tf, todayKey());
+  if (tf && focusContentDate) renderTodayFocus(tf, focusContentDate);
 }
 function addContent() {
   const inp = $("#contentInput"); const v = inp.value.trim(); if (!v) return;
@@ -1582,6 +1583,7 @@ function todayKey() { return iso(new Date()); }
 
 function renderTodayFocus(container, dateKey) {
   container.innerHTML = "";
+  focusContentDate = null;
   const isToday = dateKey === todayKey();
   board.dayPlans ||= {};
   const plan = board.dayPlans[dateKey];
@@ -1594,7 +1596,7 @@ function renderTodayFocus(container, dateKey) {
   const wrap = el("div", "today-focus");
   wrap.appendChild(focusColumn("Tasks", "task", dateKey, isToday, plan));
   const ideasCol = focusColumn("Ideas", "idea", dateKey, isToday, plan);
-  ideasCol.appendChild(focusContent(due, isToday));
+  ideasCol.appendChild(focusContent(due, isToday, dateKey));
   wrap.appendChild(ideasCol);
   container.appendChild(wrap);
 }
@@ -1608,24 +1610,27 @@ function contentDue(dateKey, isToday) {
     c.postDate === dateKey || (isToday && c.postDate < dateKey && c.status !== "done")));
 }
 
-function focusContent(due, isToday) {
+// The date the visible Focus panel's Content block schedules drops onto.
+let focusContentDate = null;
+function focusContent(due, isToday, dateKey) {
   const sub = el("div", "tf-sub");
   const head = el("div", "tf-head");
   head.textContent = (isToday ? "Today's " : "That day's ") + "Content";
   const list = el("ul", "list tf-list");
   sub.append(head, list);
-  if (isToday) {
-    // Dropping a content card here dates it for today (see handleDrop).
-    registerList("today-content", due, () => onContentChange(), "content");
-    registerContainerDrop(list, "today-content");
-  }
+  // Dropping a content card here dates it for this day (see handleDrop). Unlike
+  // day-plan rows these are the board's own cards, not copies, so a past day's
+  // content stays live too.
+  focusContentDate = dateKey;
+  registerList("day-content", due, () => onContentChange(), "content");
+  registerContainerDrop(list, "day-content");
   if (!due.length) {
     const e = el("div", "empty tf-empty");
     e.textContent = isToday ? "Nothing to post today. Give a content card a post date, or drag one here."
-                            : "Nothing here.";
+                            : "Nothing here. Drag a content card here to date it for this day.";
     list.appendChild(e);
   } else {
-    for (const item of due) list.appendChild(isToday ? ideaRow(item, "content") : readOnlyRow(item, "content"));
+    for (const item of due) list.appendChild(ideaRow(item, "content"));
   }
   return sub;
 }
