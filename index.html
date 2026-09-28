@@ -835,7 +835,7 @@ function handleDrop(e, targetListId, targetId) {
   if (targetListId === "day-content") {
     const item = board.content.find(x => x.id === fromId);
     if (!item || fromListId !== "content") return;
-    item.postDate = focusContentDate; item.updated = new Date().toISOString();
+    item.postDate = todayKey(); item.updated = new Date().toISOString();
     onContentChange(); save();
     return;
   }
@@ -1445,12 +1445,14 @@ function postDateRow(item, onChange) {
   if (item.postDate && item.postDate < todayKey() && item.status !== "done") wrap.classList.add("overdue");
   const txt = el("span"); txt.textContent = "post";
   const inp = el("input"); inp.type = "date"; inp.value = item.postDate || "";
+  inp.min = todayKey();  // a post date is never set in the past
   inp.setAttribute("aria-label", "Post date");
   // Chrome fires "change" on every keystroke that forms a valid date, so typing
   // a year commits "0020" after two digits and the re-render steals the field.
   // While it has focus, wait for blur or Enter to commit.
   const commit = () => {
     if ((item.postDate || "") === inp.value) return;
+    if (inp.value && inp.value < todayKey()) { inp.value = item.postDate || ""; return; }
     if (inp.value) item.postDate = inp.value; else delete item.postDate;
     item.updated = new Date().toISOString();
     onChange(); save();
@@ -1621,19 +1623,20 @@ function focusContent(due, isToday, dateKey) {
   head.textContent = (isToday ? "Today's " : "That day's ") + "Content";
   const list = el("ul", "list tf-list");
   sub.append(head, list);
-  // Dropping a content card here dates it for this day (see handleDrop). Unlike
-  // day-plan rows these are the board's own cards, not copies, so a past day's
-  // content stays live too.
   focusContentDate = dateKey;
-  registerList("day-content", due, () => onContentChange(), "content");
-  registerContainerDrop(list, "day-content");
+  // Dropping a content card here dates it for today (see handleDrop). Past days
+  // are a record, so nothing can be scheduled onto them.
+  if (isToday) {
+    registerList("day-content", due, () => onContentChange(), "content");
+    registerContainerDrop(list, "day-content");
+  }
   if (!due.length) {
     const e = el("div", "empty tf-empty");
     e.textContent = isToday ? "Nothing to post today. Give a content card a post date, or drag one here."
-                            : "Nothing here. Drag a content card here to date it for this day.";
+                            : "Nothing here.";
     list.appendChild(e);
   } else {
-    for (const item of due) list.appendChild(ideaRow(item, "content"));
+    for (const item of due) list.appendChild(isToday ? ideaRow(item, "content") : readOnlyRow(item, "content"));
   }
   return sub;
 }

@@ -76,7 +76,7 @@ logbook/
 - **Board** (`data/board.json`): `tasks[]` each have `id`, `title`, `status`
   (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists. Content
   items carry an optional `postDate`: they aren't copied into
-  `dayPlans` but are derived into the Focus panel's "Content" block under Ideas on that date. Dropping a card on any day's Content block dates it for that day; once its date arrives it leaves the Content list and lives only in that day's Focus (dragging it back clears the date). If the day passes and it isn't done, it returns to the Content list flagged red as overdue. The UI autosaves via `POST /api/board`.
+  `dayPlans` but are derived into the Focus panel's "Content" block under Ideas on that date. Dropping a card on today's Content block dates it for today (past days never accept drops, and the date field refuses past dates); once its date arrives it leaves the Content list and lives only in that day's Focus (dragging it back clears the date). If the day passes and it isn't done, it returns to the Content list flagged red as overdue. The UI autosaves via `POST /api/board`.
   An agent or cron job can append items to this file directly (preserve the `rev` field).
 - **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
   current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
