@@ -77,7 +77,7 @@ logbook/
   (`backlog|doing|done`); `ideas[]` and `content[]` have `id`, `title`. Rows cross freely between all three lists. Content
   items carry an optional `postDate`: they aren't copied into
   `dayPlans` but are derived into the Focus panel's "Content" block under Ideas on that date
-  (today's also lists overdue, unfinished pieces). Dropping a card there dates it for today. The UI autosaves via `POST /api/board`.
+  (today's also lists overdue, unfinished pieces). Dropping a card on any day's Content block dates it for that day, and once its date arrives it leaves the Content list and lives only in that day's Focus (dragging it back clears the date). The UI autosaves via `POST /api/board`.
   An agent or cron job can append items to this file directly (preserve the `rev` field).
 - **Write protection**: the board carries a `rev` counter. `POST /api/board` must echo the
   current `rev` or it's rejected with 409 + the fresh board (the UI then reloads instead of
