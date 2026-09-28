@@ -7,6 +7,21 @@ forward-compatible: no migration is required and unknown fields are preserved on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-28
+
+### Changed
+
+- A content card whose post date is today lives only in today's Focus. Once its day has passed,
+  a done card stays in that day's Focus as a record, and an unfinished one goes back to the
+  Content list with the red overdue flag instead of piling up in today's Focus.
+- Post dates can no longer be set in the past, and a past day's Content block is read-only.
+
+### Fixed
+
+- The post-date field let only two digits of the year be typed before committing.
+- Typing a year into the daily log's date field jumped the log to year 0002 and blanked the
+  field. The server now answers malformed dates with a 400 instead of today's log.
+
 ## [1.0.1] - 2026-09-27
 
 ### Removed
@@ -58,6 +73,7 @@ everything up to the release.
 - Failed LLM summaries were frozen instead of retried.
 - The day log could render, and bill for summaries, twice on first load.
 
-[Unreleased]: https://github.com/magratheazaphod/logbook/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/magratheazaphod/logbook/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/magratheazaphod/logbook/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/magratheazaphod/logbook/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/magratheazaphod/logbook/releases/tag/v1.0.0
