@@ -141,7 +141,8 @@ python3 -m unittest discover tests
 
 Covers transcript parsing (normal CLI, worktree, Cowork sidecar, malformed lines, the
 sub-1000-token filter, timezones), the board `rev` 409 guard and daily backups, handoff path
-safety (ids can't escape, only drafts are writable) and `config.json` loading. `tests/support.py`
+safety (ids can't escape, only drafts are writable), strict log dates (malformed ones get a 400,
+future days are never frozen) and `config.json` loading. `tests/support.py`
 imports a fresh `server.py` per test with every path (`LOGBOOK_DATA_DIR`, `LOGBOOK_CONFIG`,
 `CLAUDE_PROJECTS_DIR`, `COWORK_SESSIONS_DIR`) in a temp dir and an empty `PATH`, and asserts
 that before any test runs - so tests can never touch the live board or trigger a billable
