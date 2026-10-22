@@ -835,8 +835,10 @@ function handleDrop(e, targetListId, targetId) {
   const fromId = payload && payload.id, fromListId = payload && payload.listId;
   // A card dragged from the left onto any of today's Focus blocks lands in the
   // block matching its kind, so a slightly-off aim still places it.
+  // "today-any" is the Focus panel's own space around the blocks.
   const TODAY_FOR = { backlog: "today-tasks", ideas: "today-ideas", content: "day-content" };
-  const todayLists = new Set(Object.values(TODAY_FOR));
+  const todayLists = new Set([...Object.values(TODAY_FOR), "today-any"]);
+  if (targetListId === "today-any" && !TODAY_FOR[fromListId]) return;
   if (TODAY_FOR[fromListId] && todayLists.has(targetListId) && targetListId !== TODAY_FOR[fromListId]) {
     targetListId = TODAY_FOR[fromListId];
     targetId = null;
@@ -1842,6 +1844,19 @@ async function loadLogOnce() {
   focusContainer.id = "todayFocus";
   out.appendChild(focusContainer);
   renderTodayFocus(focusContainer, summaryDate);
+  // Anywhere in today's Focus panel takes a card from the left, not just the
+  // blocks themselves; the lists inside handle their own drops.
+  if (summaryDate === todayKey()) {
+    focusContainer.addEventListener("dragover", e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+    focusContainer.addEventListener("drop", e => {
+      if (e.target.closest("ul.list")) return;
+      e.preventDefault();
+      handleDrop(e, "today-any", null);
+    });
+  }
 
   if (!data.projects_dir_exists) {
     const w = el("div", "warn");
