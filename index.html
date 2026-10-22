@@ -830,6 +830,14 @@ function handleDrop(e, targetListId, targetId) {
   let payload;
   try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
   const fromId = payload && payload.id, fromListId = payload && payload.listId;
+  // A card dragged from the left onto any of today's Focus blocks lands in the
+  // block matching its kind, so a slightly-off aim still places it.
+  const TODAY_FOR = { backlog: "today-tasks", ideas: "today-ideas", content: "day-content" };
+  const todayLists = new Set(Object.values(TODAY_FOR));
+  if (TODAY_FOR[fromListId] && todayLists.has(targetListId) && targetListId !== TODAY_FOR[fromListId]) {
+    targetListId = TODAY_FOR[fromListId];
+    targetId = null;
+  }
   const from = DND[fromListId], to = DND[targetListId];
   if (!fromId || !from || !to) return;
   if (targetListId === "day-content") {
