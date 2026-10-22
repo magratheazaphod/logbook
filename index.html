@@ -800,7 +800,10 @@ function makeDraggable(li, id, listId) {
     e.preventDefault();
     e.stopPropagation();
     li.classList.remove("drag-over");
-    handleDrop(e, listId, id);
+    // Today's Content rows are ordinary Content-list rows, but a drop on one
+    // means the Focus block, not the Content list on the left.
+    const dropAs = li.closest("[data-drop-as]");
+    handleDrop(e, dropAs ? dropAs.dataset.dropAs : listId, dropAs ? null : id);
   });
   return grip;
 }
@@ -1637,6 +1640,7 @@ function focusContent(due, isToday, dateKey) {
   if (isToday) {
     registerList("day-content", due, () => onContentChange(), "content");
     registerContainerDrop(list, "day-content");
+    list.dataset.dropAs = "day-content";
   }
   if (!due.length) {
     const e = el("div", "empty tf-empty");
