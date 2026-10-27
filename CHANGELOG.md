@@ -7,6 +7,12 @@ forward-compatible: no migration is required and unknown fields are preserved on
 
 ## [Unreleased]
 
+### Added
+
+- HTML handoff docs. A dropped `.html` file (or any text beginning with a doctype or `<html>`)
+  opens as the page itself, in a sandboxed frame with no scripts, instead of having its source
+  run through the Markdown renderer. Links in it open in a new tab. The pill carries a `⌗` mark.
+
 ## [1.1.0] - 2026-09-28
 
 ### Changed
