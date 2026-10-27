@@ -276,6 +276,7 @@
   }
   .handoff-pill::before{content:"❧";color:var(--accent);opacity:.8}
   .handoff-pill.is-image::before{content:"◨"}
+  .handoff-pill.is-html::before{content:"⌗"}
   .handoff-pill.is-draft::before{content:"✎"}
   .handoff-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .handoff-pill:hover{border-color:var(--accent);color:var(--accent-ink)}
@@ -350,6 +351,11 @@
     padding:20px 24px 28px;background:var(--card);color:var(--ink);
     font-family:var(--mono);font-size:13px;line-height:1.6}
   .doc-body.is-image{padding:16px;display:flex;justify-content:center;background:var(--paper)}
+  /* An HTML doc keeps its own styling and paints inside a sandboxed frame; the
+     sheet takes the full height so the frame, not the overlay, does the scrolling. */
+  .doc-sheet.is-html{height:calc(100vh - 80px)}
+  .doc-body.is-html{padding:0;flex:1;min-height:0;display:flex;background:var(--paper)}
+  .doc-body.is-html iframe{border:0;width:100%;flex:1;min-height:0;display:block;background:var(--paper)}
   .doc-body.is-image img{max-width:100%;max-height:calc(85vh - 120px);
     object-fit:contain;border:1px solid var(--line);border-radius:6px;background:var(--card)}
   .status-done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
@@ -981,7 +987,8 @@ function handoffRow(item, onChange) {
   const row = el("div", "handoff-row");
   for (const h of item.handoffs) {
     const pill = el("button", "handoff-pill" + (h.kind === "image" ? " is-image"
-                                              : h.kind === "draft" ? " is-draft" : ""));
+                                              : h.kind === "draft" ? " is-draft"
+                                              : isHtmlName(h.name) ? " is-html" : ""));
     const name = el("span"); name.textContent = h.name;
     pill.appendChild(name);
     pill.title = `Open ${h.name}${h.added ? " — attached " + h.added.slice(0, 10) : ""}`;
@@ -1225,6 +1232,7 @@ function openHandoff(h) {
         return;
       }
       if (doc.kind === "draft") { flushDraft = editDraft(h, doc, sheet, head, body, meta); return; }
+      if (isHtmlDoc(doc.name, doc.text)) { showHtmlDoc(doc, sheet, body); return; }
       body.innerHTML = renderMarkdown(doc.text || "");
       for (const a of body.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener"; }
     })
@@ -1274,6 +1282,28 @@ function editDraft(h, doc, sheet, head, body, meta) {
     }
   };
   return push;
+}
+
+// An HTML handoff (a page an agent wrote to be read, rather than notes) is shown
+// as itself, in a sandboxed frame, instead of being pushed through the Markdown
+// renderer, which would print its source. The sandbox grants no scripts and no
+// origin, so the page can only paint; links are retargeted so a click opens a
+// new tab instead of navigating inside the frame.
+const isHtmlName = name => /\.html?$/i.test(name || "");
+function isHtmlDoc(name, text) {
+  return isHtmlName(name) || /^\s*(<!doctype\s+html|<html[\s>])/i.test(text || "");
+}
+function showHtmlDoc(doc, sheet, body) {
+  body.textContent = "";
+  body.classList.add("is-html");
+  sheet.classList.add("is-html");
+  const frame = document.createElement("iframe");
+  frame.title = doc.name;
+  frame.setAttribute("sandbox", "allow-popups allow-popups-to-escape-sandbox");
+  const base = '<base target="_blank">';
+  const text = doc.text || "";
+  frame.srcdoc = /<head[^>]*>/i.test(text) ? text.replace(/<head[^>]*>/i, m => m + base) : base + text;
+  body.appendChild(frame);
 }
 
 // A small Markdown subset, enough for handoff docs — headings, lists (incl.

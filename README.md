@@ -40,9 +40,10 @@ backlog, so the archive only ever shows what actually got done.
 - **Summaries.** Every session gets a one-sentence "what actually happened here", and each past
   day a one-line summary of the whole day, written by your own `claude` CLI in the background and
   cached so you pay for each once. Edit one in place and it stays edited, or regenerate it.
-- **Handoff docs and drafts.** Drop a Markdown or text file (or an image) from Finder or your
-  editor onto a card and it attaches as a pill; click it to read the doc rendered in-app. It
-  tracks the live file and falls back to a snapshot if the file moves. Content cards also get a
+- **Handoff docs and drafts.** Drop a Markdown, HTML or text file (or an image) from Finder or
+  your editor onto a card and it attaches as a pill; click it to read the doc rendered in-app,
+  an HTML page shown as itself in a sandboxed frame. It tracks the live file and falls back to
+  a snapshot if the file moves. Content cards also get a
   **+ draft** button: an in-app Markdown editor with preview and autosave.
 - **Dark mode.** Follows your OS, or pin light or dark from the header.
 - **Install as app.** A real icon and a chromeless window via Chrome's "Install as app" or iOS's
