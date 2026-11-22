@@ -13,6 +13,7 @@ Then open:       http://localhost:8787
 """
 
 import base64
+import bisect
 import errno
 import json
 import mimetypes
@@ -23,6 +24,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import html
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -972,41 +974,41 @@ def _compute_day(target):
 # (the agent was left alone). Wall-clock start-to-end would credit a session
 # left open overnight with eight hours.
 FLOW_IDLE_GAP = 15 * 60
-FLOW_MAX_BUCKETS = 104
-
-
-def _bucket_start(d, bucket):
-    return d - timedelta(days=d.weekday()) if bucket == "week" else d
-
-
-def _active_minutes_by_project_day(sessions):
-    """{project_short: {date: minutes}} over the given sessions."""
-    out = {}
-    for s in sessions:
-        by_day = {}
-        for ts, _, tok in s["events"]:
-            by_day.setdefault(ts.date(), []).append((ts, tok))
-        for day, evs in by_day.items():
-            if sum(t for _, t in evs) < MIN_SESSION_TOKENS:
-                continue
-            times = sorted(ts for ts, _ in evs)
-            active = sum(g for g in ((b - a).total_seconds() for a, b in zip(times, times[1:]))
-                         if g <= FLOW_IDLE_GAP)
-            days = out.setdefault(s["project_short"], {})
-            days[day] = days.get(day, 0.0) + active / 60
-    return out
-
+FLOW_MAX_BUCKETS = 400
 
 # Prompt history only has your prompts, not the agent's replies, so the gap cap
 # is the same and each burst of prompts gets a flat tail for the agent's last
 # reply. Calibrated against Oct-Nov 2026, where both sources exist: 15 min +
 # 5 min reproduced the transcript hours to within 1% overall.
 HISTORY_TAIL_MIN = 5
+
+# Bucket sizes the chart can ask for. Sub-day sizes are aligned to local
+# midnight, weeks start on Monday.
+FLOW_UNITS = {"15m": 900, "30m": 1800, "1h": 3600, "3h": 10800, "6h": 21600,
+              "12h": 43200, "1d": None, "1w": None}
+
+
+def _gap_intervals(times, tail):
+    """Active (start, end) epoch-second spans from sorted datetimes: every gap
+    up to FLOW_IDLE_GAP is work; with `tail`, each burst also gets `tail`
+    seconds after its last event (prompt history has no reply timestamps)."""
+    out = []
+    for a, b in zip(times, times[1:]):
+        g = (b - a).total_seconds()
+        if g <= FLOW_IDLE_GAP:
+            out.append((a.timestamp(), b.timestamp()))
+        elif tail:
+            out.append((a.timestamp(), a.timestamp() + tail))
+    if tail and times:
+        out.append((times[-1].timestamp(), times[-1].timestamp() + tail))
+    return out
+
+
 _history_cache = {"mtime": None, "data": {}}
 
 
-def _history_minutes_by_project_day():
-    """{project_short: {date: minutes}} estimated from HISTORY_FILE."""
+def _history_intervals():
+    """{(project_short, date): [(start, end), ...]} from HISTORY_FILE."""
     try:
         mtime = HISTORY_FILE.stat().st_mtime
     except OSError:
@@ -1019,98 +1021,171 @@ def _history_minutes_by_project_day():
             for line in f:
                 try:
                     obj = json.loads(line)
-                    ts = datetime.fromtimestamp(obj["timestamp"] / 1000)
+                    ts = datetime.fromtimestamp(obj["timestamp"] / 1000).astimezone()
                     proj = obj["project"]
                 except Exception:
                     continue
                 if not isinstance(proj, str) or not proj:
                     continue
-                key = (proj, obj.get("sessionId"), ts.date())
-                prompts.setdefault(key, []).append(ts)
+                prompts.setdefault((proj, obj.get("sessionId"), ts.date()), []).append(ts)
     except OSError:
         return {}
-    shorts = {}
-    out = {}
+    shorts, out = {}, {}
     for (proj, _, day), times in prompts.items():
         if proj not in shorts:
             shorts[proj] = Path(canonical_project(proj)).name or proj
         times.sort()
-        minutes = HISTORY_TAIL_MIN
-        for a, b in zip(times, times[1:]):
-            g = (b - a).total_seconds()
-            minutes += g / 60 if g <= FLOW_IDLE_GAP else HISTORY_TAIL_MIN
-        days = out.setdefault(shorts[proj], {})
-        days[day] = days.get(day, 0.0) + minutes
+        out.setdefault((shorts[proj], day), []).extend(
+            _gap_intervals(times, HISTORY_TAIL_MIN * 60))
     _history_cache.update(mtime=mtime, data=out)
     return out
 
 
-def _flow_minutes():
-    """Transcript minutes, with any day whose transcripts were (partly) pruned
-    replaced by its prompt-history estimate. A day counts as pruned when its
-    CLI transcripts cover under half the time history shows - pruning isn't a
-    clean cutoff, some sessions from a day survive while others go. Cowork
-    sessions aren't in the history file, so they're always kept.
-    Returns (per_day, estimated_days)."""
-    cli, cowork = {}, {}
-    for s in collect_sessions():
+def _session_intervals(s):
+    """{date: [(start, end), ...]} for one session; days under
+    MIN_SESSION_TOKENS are dropped, same as the daily log."""
+    by_day = {}
+    for ts, _, tok in s["events"]:
+        by_day.setdefault(ts.date(), []).append((ts, tok))
+    out = {}
+    for day, evs in by_day.items():
+        if sum(t for _, t in evs) >= MIN_SESSION_TOKENS:
+            out[day] = _gap_intervals(sorted(ts for ts, _ in evs), 0)
+    return out
+
+
+_flow_cache = {"key": None, "data": None, "at": 0.0}
+# Zooming fires a request per gesture pause; rescanning every transcript dir
+# costs ~0.5s, so a scan is reused this long. The chart is history - a few
+# seconds of staleness is invisible.
+FLOW_RESCAN_SECONDS = 30
+
+
+def _flow_intervals():
+    """Every active span as (start, end, project), sorted by start, plus the
+    set of days rebuilt from prompt history and all-time minutes per project.
+
+    A day is rebuilt from history when its CLI transcripts cover under half
+    the time history shows: Claude Code prunes transcripts after
+    cleanupPeriodDays, and not as a clean cutoff - some of a day's sessions
+    survive while others go. Cowork sessions aren't in the history file, so
+    they always count."""
+    now = time.monotonic()
+    if _flow_cache["data"] is not None and now - _flow_cache["at"] < FLOW_RESCAN_SECONDS:
+        return _flow_cache["data"]
+    sessions = collect_sessions()
+    try:
+        hist_mtime = HISTORY_FILE.stat().st_mtime
+    except OSError:
+        hist_mtime = None
+    key = (hist_mtime, tuple(sorted((s["file"], s["mtime"]) for s in sessions)))
+    if _flow_cache["key"] == key:
+        _flow_cache["at"] = now
+        return _flow_cache["data"]
+
+    cli, cowork = {}, {}          # {day: {project: [spans]}}
+    for s in sessions:
         target = cowork if s.get("source") == "cowork" else cli
-        one = _active_minutes_by_project_day([s])
-        for proj, days in one.items():
-            for day, m in days.items():
-                target.setdefault(day, {})
-                target[day][proj] = target[day].get(proj, 0.0) + m
+        for day, spans in _session_intervals(s).items():
+            target.setdefault(day, {}).setdefault(s["project_short"], []).extend(spans)
     hist = {}
-    for proj, days in _history_minutes_by_project_day().items():
-        for day, m in days.items():
-            hist.setdefault(day, {})[proj] = m
+    for (proj, day), spans in _history_intervals().items():
+        hist.setdefault(day, {})[proj] = spans
 
-    estimated = set()
-    per_day = {}
+    def total(by_proj):
+        return sum(b - a for spans in by_proj.values() for a, b in spans)
+
+    spans_out, estimated = [], set()
     for day in set(cli) | set(cowork) | set(hist):
-        c, h = cli.get(day, {}), hist.get(day, {})
-        use = c
-        if sum(c.values()) < 0.5 * sum(h.values()):
-            use, _ = h, estimated.add(day)
+        use = cli.get(day, {})
+        if total(use) < 0.5 * total(hist.get(day, {})):
+            use = hist[day]
+            estimated.add(day)
         for src in (use, cowork.get(day, {})):
-            for proj, m in src.items():
-                per_day.setdefault(proj, {})
-                per_day[proj][day] = per_day[proj].get(day, 0.0) + m
-    return per_day, estimated
+            for proj, spans in src.items():
+                spans_out.extend((a, b, proj) for a, b in spans)
+    spans_out.sort()
+    all_time = {}
+    for a, b, proj in spans_out:
+        all_time[proj] = all_time.get(proj, 0.0) + (b - a) / 60
+    data = {"spans": spans_out, "starts": [sp[0] for sp in spans_out],
+            "estimated": estimated, "all_time": all_time}
+    _flow_cache.update(key=key, data=data, at=now)
+    return data
 
 
-def project_flow(bucket="week", count=12, today=None):
-    """Minutes per project per bucket, oldest bucket first. Session-days under
-    MIN_SESSION_TOKENS are skipped, same as the daily log. Each project also
-    carries `rank`, its place by all-time hours, so the UI can give it the
-    same colour whatever range is showing."""
-    if bucket not in ("day", "week"):
-        raise ValueError("bucket must be 'day' or 'week'")
-    count = max(1, min(int(count), FLOW_MAX_BUCKETS))
-    step = timedelta(weeks=1) if bucket == "week" else timedelta(days=1)
-    last = _bucket_start(today or date.today(), bucket)
-    starts = [last - step * (count - 1 - i) for i in range(count)]
-    index = {d: i for i, d in enumerate(starts)}
+def _warm_flow():
+    try:
+        _flow_intervals()
+    except Exception as e:      # a warm-up failure must never take the server down
+        print(f"flow warm-up failed: {e}", file=sys.stderr)
 
-    per_day, estimated = _flow_minutes()
-    all_time = sorted(per_day, key=lambda p: (-sum(per_day[p].values()), p))
-    rank = {p: i for i, p in enumerate(all_time)}
 
-    projects = []
-    for name, days in per_day.items():
-        row = [0.0] * count
-        for day, m in days.items():
-            i = index.get(_bucket_start(day, bucket))
-            if i is not None:
-                row[i] += m
-        if sum(row) >= 1:
-            projects.append({"name": name, "minutes": [round(x, 1) for x in row],
-                             "total": round(sum(row), 1), "rank": rank[name]})
+def parse_flow_time(text):
+    """Strict local 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM' -> naive datetime."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?", str(text)):
+        raise ValueError(f"bad time {text!r}, expected YYYY-MM-DD or YYYY-MM-DDTHH:MM")
+    return datetime.fromisoformat(text)
+
+
+def _flow_edges(start, end, unit):
+    """Local-time bucket edges (naive datetimes) covering [start, end)."""
+    if unit not in FLOW_UNITS:
+        raise ValueError("unit must be one of " + ", ".join(FLOW_UNITS))
+    if end <= start:
+        raise ValueError("'to' must be after 'from'")
+    if unit == "1w":
+        d = start.date()
+        cur, step = datetime.combine(d - timedelta(days=d.weekday()), datetime.min.time()), timedelta(weeks=1)
+    elif unit == "1d":
+        cur, step = datetime.combine(start.date(), datetime.min.time()), timedelta(days=1)
+    else:
+        sec = FLOW_UNITS[unit]
+        midnight = datetime.combine(start.date(), datetime.min.time())
+        into = (start - midnight).total_seconds()
+        cur, step = midnight + timedelta(seconds=into // sec * sec), timedelta(seconds=sec)
+    edges = [cur]
+    while edges[-1] < end:
+        edges.append(edges[-1] + step)
+        if len(edges) > FLOW_MAX_BUCKETS + 1:
+            raise ValueError(f"more than {FLOW_MAX_BUCKETS} buckets; use a bigger unit")
+    return edges
+
+
+def project_flow(start, end, unit):
+    """Active minutes per project per bucket between two local times.
+
+    Each project carries `rank`, its place by all-time hours, so the UI gives
+    it the same colour at every zoom level. `edges` are epoch milliseconds
+    (one more than the buckets); `estimated` lists buckets touching a day
+    rebuilt from prompt history."""
+    edges = _flow_edges(start, end, unit)
+    secs = [e.timestamp() for e in edges]
+    n = len(edges) - 1
+    data = _flow_intervals()
+    spans, starts = data["spans"], data["starts"]
+
+    rows = {}
+    lo = bisect.bisect_left(starts, secs[0] - FLOW_IDLE_GAP - HISTORY_TAIL_MIN * 60)
+    hi = bisect.bisect_left(starts, secs[-1])
+    for a, b, proj in spans[lo:hi]:
+        i = max(bisect.bisect_right(secs, a) - 1, 0)
+        while i < n and secs[i] < b:
+            overlap = min(b, secs[i + 1]) - max(a, secs[i])
+            if overlap > 0:
+                rows.setdefault(proj, [0.0] * n)[i] += overlap / 60
+            i += 1
+
+    rank = {p: i for i, p in enumerate(sorted(data["all_time"], key=lambda p: (-data["all_time"][p], p)))}
+    projects = [{"name": p, "minutes": [round(x, 1) for x in row], "total": round(sum(row), 1),
+                 "rank": rank[p]} for p, row in rows.items() if sum(row) >= 0.5]
     projects.sort(key=lambda p: -p["total"])
-    est = sorted({index[_bucket_start(d, bucket)] for d in estimated
-                  if _bucket_start(d, bucket) in index})
-    return {"bucket": bucket, "buckets": [d.isoformat() for d in starts], "projects": projects,
-            "estimated": est}
+    est_days = [datetime.combine(d, datetime.min.time()) for d in data["estimated"]]
+    est = [i for i in range(n)
+           if any(edges[i] < d + timedelta(days=1) and d < edges[i + 1] for d in est_days)]
+    return {"unit": unit, "buckets": [e.strftime("%Y-%m-%dT%H:%M") for e in edges[:-1]],
+            "edges": [int(x * 1000) for x in secs], "projects": projects, "estimated": est,
+            "first": int(spans[0][0] * 1000) if spans else None}
 
 
 # --------------------------------------------------------------------------- #
@@ -1361,7 +1436,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/flow":
                 q = parse_qs(parsed.query)
                 try:
-                    flow = project_flow(q.get("bucket", ["week"])[0], q.get("count", ["12"])[0])
+                    flow = project_flow(parse_flow_time(q.get("from", [""])[0]),
+                                        parse_flow_time(q.get("to", [""])[0]),
+                                        q.get("unit", ["1d"])[0])
                 except ValueError as e:
                     self._send(400, {"error": str(e)})
                 else:
@@ -1572,6 +1649,8 @@ def main():
     print("  summaries:   " + on_off(CLAUDE_BIN, "`claude` not on PATH"))
     print("  cowork:      " + on_off(COWORK_SESSIONS_DIR.exists(), "no Cowork sessions dir"))
     print("Press Ctrl+C to stop.")
+    # Parse transcripts for the flow chart now, so opening it isn't a cold scan.
+    threading.Thread(target=_warm_flow, daemon=True).start()
     try:
         serve(servers)
     except KeyboardInterrupt:

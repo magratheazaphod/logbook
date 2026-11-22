@@ -115,14 +115,17 @@ logbook/
   background pool, never on the request path: the response says `pending: true` while any are
   outstanding and the UI re-polls. Session summaries persist only once the session is quiet.
 - **Project flow**: the header's `flow` pill opens an overlay (not a tab - the page is kept
-  untabbed on purpose) with an alluvial chart of hands-on time per project per week or day.
-  `GET /api/flow?bucket=week|day&count=N` sums gaps between consecutive transcript events
-  under `FLOW_IDLE_GAP` (15 min), skipping session-days under `MIN_SESSION_TOKENS`. A project's
-  colour is fixed by its all-time rank (`rank` in the response), so it matches across ranges;
-  the all-time top 12 get `--flow-1..12`, the rest fold into "other". Days before the
-  first surviving CLI transcript (Claude Code prunes them unless `cleanupPeriodDays` is raised)
-  are estimated from `~/.claude/history.jsonl` (`CLAUDE_HISTORY_FILE`), the prompt log, and
-  listed in `estimated`.
+  untabbed on purpose) with an alluvial chart of hands-on time per project. It zooms like a
+  map: pinch (ctrl+wheel) around the cursor, swipe/drag to pan, double-click to zoom in; the
+  bucket size follows the zoom from weeks down to 15 minutes, re-drawing from the data in hand
+  during a gesture and fetching finer data when it pauses.
+  `GET /api/flow?from=&to=&unit=15m|30m|1h|3h|6h|12h|1d|1w` (local times) buckets active spans:
+  gaps under `FLOW_IDLE_GAP` (15 min) between transcript events, skipping session-days under
+  `MIN_SESSION_TOKENS`. The span list is cached and only rescanned every 30s, and warmed at
+  startup. A project's colour is fixed by its all-time rank (`rank`), so it matches at every
+  zoom; the all-time top 12 get `--flow-1..12`, the rest fold into "other". Days whose
+  transcripts Claude Code pruned are rebuilt from `~/.claude/history.jsonl`
+  (`CLAUDE_HISTORY_FILE`), the prompt log, and flagged in `estimated`.
 - **Theme**: light and dark palettes are `:root` tokens in `index.html`; dark follows the OS
   unless the header pill pins light or dark (`data-theme` on `<html>`, saved in localStorage
   and applied by an inline script before first paint). New colours must be tokens with a value

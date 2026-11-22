@@ -307,10 +307,16 @@
   /* Project flow overlay ------------------------------------------------- */
   .flow-sheet{width:min(1120px,100%)}
   .flow-ctrl{display:flex;gap:6px;flex:none}
+  .flow-sheet .doc-head h3{flex:none}
+  .flow-sheet .doc-head .meta{flex:1}
   .flow-ctrl button{font:500 11px var(--mono);color:var(--muted);background:var(--card);
     border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer}
   .flow-ctrl button.on,.flow-ctrl button:hover{border-color:var(--accent);color:var(--accent-ink)}
-  .flow-body{padding:16px 20px 20px;overflow:auto;position:relative}
+  .flow-body{padding:16px 20px 20px;overflow:auto;position:relative;
+    cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+  .flow-body.dragging{cursor:grabbing}
+  .flow-body text.axis.day{fill:var(--ink)}
+  .flow-body .daymark{stroke:var(--line-strong);stroke-dasharray:1 3}
   .flow-body svg{display:block;width:100%;height:auto}
   .flow-body text{font-family:var(--mono);font-size:11px;fill:var(--ink)}
   .flow-body text.axis{fill:var(--muted);font-size:10.5px}
@@ -324,6 +330,10 @@
     border:1px solid var(--line-strong);border-radius:6px;box-shadow:var(--shadow-float);
     padding:4px 8px;font:11.5px var(--mono);white-space:nowrap}
   .flow-tip[hidden]{display:none}
+  .flow-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font:11.5px var(--mono)}
+  .flow-legend .item{display:inline-flex;align-items:center;gap:5px;cursor:default}
+  .flow-legend i{width:9px;height:9px;border-radius:2px;flex:none}
+  .flow-legend .hrs{color:var(--muted)}
   .flow-note{color:var(--faint);font:11px var(--mono);margin-top:8px}
   /* Handoff overlay ------------------------------------------------------- */
   .doc-overlay{
@@ -2090,17 +2100,22 @@ async function boot() {
 boot();
 
 // ---- project flow -------------------------------------------------------
-// An alluvial chart of where hands-on time went: one column per day/week,
-// each project a block sized by its active hours, ribbons joining a project's
+// An alluvial chart of where hands-on time went: one column per time bucket,
+// each project a block sized by its active time, ribbons joining a project's
 // blocks across columns. Opens as an overlay so the page itself stays one view.
-const FLOW_RANGES = [
-  { key: "w12", label: "12 weeks", bucket: "week", count: 12 },
-  { key: "w26", label: "26 weeks", bucket: "week", count: 26 },
-  { key: "w52", label: "1 year", bucket: "week", count: 52 },
-  { key: "d30", label: "30 days", bucket: "day", count: 30 },
-];
+//
+// It zooms like a map: pinch (a ctrl+wheel event in Chrome) zooms around the
+// cursor, a two-finger swipe or a drag pans, double-click zooms in. The bucket
+// size follows the zoom, from weeks down to 15 minutes. While a gesture runs
+// the chart re-draws from the data it has; finer data is fetched once it pauses.
+const HOUR = 36e5, DAY = 24 * HOUR;
+const FLOW_UNITS = [["15m", HOUR / 4], ["30m", HOUR / 2], ["1h", HOUR], ["3h", 3 * HOUR],
+  ["6h", 6 * HOUR], ["12h", 12 * HOUR], ["1d", DAY], ["1w", 7 * DAY]];
+const FLOW_MAX_COLS = 48;
+const FLOW_MIN_SPAN = 3 * HOUR, FLOW_MAX_SPAN = 730 * DAY;
 const FLOW_COLOURS = 12;   // --flow-1..12 tokens
 const SVG_NS = "http://www.w3.org/2000/svg";
+
 function svgEl(t, attrs) {
   const e = document.createElementNS(SVG_NS, t);
   for (const k in attrs) e.setAttribute(k, attrs[k]);
@@ -2109,39 +2124,138 @@ function svgEl(t, attrs) {
 function fmtHours(min) {
   return min >= 60 ? (min / 60).toFixed(min >= 600 ? 0 : 1) + "h" : Math.round(min) + "m";
 }
+function localStamp(ms) {
+  const d = new Date(ms), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function startOfDay(ms) { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
+function flowUnit(span) {
+  return FLOW_UNITS.find(([, ms]) => span / ms <= FLOW_MAX_COLS) || FLOW_UNITS[FLOW_UNITS.length - 1];
+}
+// Presets end at the close of the current day/week, like the old fixed views.
+function flowPreset(key) {
+  const tomorrow = startOfDay(Date.now()) + DAY + 2 * HOUR;   // +2h rides out DST
+  const end = startOfDay(tomorrow);
+  const monday = new Date(end - DAY); monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+  const nextMonday = startOfDay(monday.getTime() + 7 * DAY + 2 * HOUR);
+  const weeks = n => ({ t0: startOfDay(nextMonday - n * 7 * DAY + 2 * HOUR), t1: nextMonday });
+  return { w12: weeks(12), w26: weeks(26), w52: weeks(52),
+    d30: { t0: startOfDay(end - 30 * DAY + 2 * HOUR), t1: end } }[key];
+}
+const FLOW_RANGES = [
+  { key: "w12", label: "12 weeks" }, { key: "w26", label: "26 weeks" },
+  { key: "w52", label: "1 year" }, { key: "d30", label: "30 days" },
+];
 
 function openFlow() {
   const overlay = el("div", "doc-overlay");
   const sheet = el("div", "doc-sheet flow-sheet");
   const head = el("div", "doc-head");
   const title = document.createElement("h3"); title.textContent = "Project flow";
+  const range = el("span", "meta");
   const ctrl = el("div", "flow-ctrl");
   const close = el("button", "doc-close"); close.textContent = "✕";
   close.setAttribute("aria-label", "Close");
-  head.append(title, ctrl, close);
+  head.append(title, range, ctrl, close);
   const body = el("div", "flow-body");
   sheet.append(head, body);
   overlay.appendChild(sheet);
 
-  let current = "w12";
-  try { current = localStorage.getItem("logbook-flow-range") || current; } catch (e) {}
-  if (!FLOW_RANGES.some(r => r.key === current)) current = "w12";
+  let preset = "w12";
+  try { preset = localStorage.getItem("logbook-flow-range") || preset; } catch (e) {}
+  if (!FLOW_RANGES.some(r => r.key === preset)) preset = "w12";
+  const st = { view: flowPreset(preset), data: null, first: null, seq: 0, timer: 0, frame: 0 };
+
   const buttons = FLOW_RANGES.map(r => {
     const b = el("button"); b.type = "button"; b.textContent = r.label;
-    b.onclick = () => { current = r.key; try { localStorage.setItem("logbook-flow-range", r.key); } catch (e) {} load(); };
+    b.onclick = () => {
+      preset = r.key; st.view = flowPreset(r.key);
+      try { localStorage.setItem("logbook-flow-range", r.key); } catch (e) {}
+      changed(true);
+    };
     ctrl.appendChild(b);
     return [r.key, b];
   });
 
-  function load() {
-    buttons.forEach(([k, b]) => b.classList.toggle("on", k === current));
-    const r = FLOW_RANGES.find(x => x.key === current);
-    body.textContent = "Loading…";
-    fetch(`/api/flow?bucket=${r.bucket}&count=${r.count}`)
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => { if (current === r.key) renderFlow(body, data); })
-      .catch(() => { body.textContent = "Couldn't load the flow."; });
+  const chart = new FlowChart(body, st);
+
+  // Fetch when the bucket size changes or the view leaves the fetched span.
+  function needsFetch() {
+    const d = st.data, [unit] = flowUnit(st.view.t1 - st.view.t0);
+    return !d || d.unit !== unit || st.view.t0 < d.edges[0] || st.view.t1 > d.edges[d.edges.length - 1];
   }
+  function fetchNow() {
+    const span = st.view.t1 - st.view.t0, [unit] = flowUnit(span);
+    const seq = ++st.seq;
+    // Half a view of headroom either side, so a pan doesn't hit an edge at once.
+    const q = `from=${localStamp(st.view.t0 - span / 2)}&to=${localStamp(st.view.t1 + span / 2)}&unit=${unit}`;
+    fetch("/api/flow?" + q)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => {
+        if (seq !== st.seq) return;          // a newer view was asked for
+        st.data = data;
+        if (data.first != null) st.first = data.first;
+        draw();
+      })
+      .catch(() => { if (seq === st.seq && !st.data) body.textContent = "Couldn't load the flow."; });
+  }
+  function draw() {
+    cancelAnimationFrame(st.frame);
+    st.frame = requestAnimationFrame(() => {
+      chart.render();
+      range.textContent = chart.rangeLabel();
+      buttons.forEach(([k, b]) => b.classList.toggle("on", k === preset));
+    });
+  }
+  function changed(immediate) {
+    draw();
+    clearTimeout(st.timer);
+    if (needsFetch()) st.timer = setTimeout(fetchNow, immediate ? 0 : 140);
+  }
+
+  // Keep the view inside [first activity, end of today], and the zoom sane.
+  function setView(t0, t1) {
+    let span = Math.min(Math.max(t1 - t0, FLOW_MIN_SPAN), FLOW_MAX_SPAN);
+    const mid = (t0 + t1) / 2;
+    t0 = mid - span / 2; t1 = mid + span / 2;
+    const hiEnd = startOfDay(Date.now() + DAY + 2 * HOUR) + span * 0.05;
+    const loEnd = (st.first ?? t0) - span * 0.05;
+    if (t1 > hiEnd) { t0 -= t1 - hiEnd; t1 = hiEnd; }
+    if (t0 < loEnd) { t1 += loEnd - t0; t0 = loEnd; }
+    st.view = { t0, t1 };
+    preset = null;
+    changed(false);
+  }
+  function zoomAt(clientX, factor) {
+    const t = chart.timeAt(clientX), { t0, t1 } = st.view;
+    setView(t - (t - t0) * factor, t + (t1 - t) * factor);
+  }
+  body.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    if (ev.ctrlKey) {
+      zoomAt(ev.clientX, Math.exp(ev.deltaY * 0.01));          // trackpad pinch
+    } else {
+      const d = Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.deltaY;
+      const shift = chart.msPerPx() * d;
+      setView(st.view.t0 + shift, st.view.t1 + shift);
+    }
+  }, { passive: false });
+  body.addEventListener("dblclick", ev => zoomAt(ev.clientX, ev.shiftKey ? 2 : 0.5));
+  let drag = null;
+  body.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0) return;
+    drag = { x: ev.clientX, view: st.view, ms: chart.msPerPx() };
+    body.setPointerCapture(ev.pointerId);
+    body.classList.add("dragging");
+  });
+  body.addEventListener("pointermove", ev => {
+    if (!drag) return;
+    const shift = (drag.x - ev.clientX) * drag.ms;
+    setView(drag.view.t0 + shift, drag.view.t1 + shift);
+  });
+  const endDrag = () => { drag = null; body.classList.remove("dragging"); };
+  body.addEventListener("pointerup", endDrag);
+  body.addEventListener("pointercancel", endDrag);
 
   const dismiss = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = ev => { if (ev.key === "Escape") dismiss(); };
@@ -2151,119 +2265,215 @@ function openFlow() {
   overlay.onclick = ev => { if (pressedBackdrop && ev.target === overlay) dismiss(); };
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
-  load();
+  body.textContent = "Loading…";
+  changed(true);
 }
 
-function renderFlow(body, data) {
-  body.textContent = "";
-  const n = data.buckets.length;
-  if (!data.projects.length) { body.textContent = "No sessions in this range."; return; }
-
-  // A project's colour comes from its all-time rank, not its rank in this
-  // range, so it keeps the same colour in every view. Projects outside the
-  // all-time top FLOW_COLOURS fold into "other".
-  const series = data.projects.filter(p => p.rank < FLOW_COLOURS).map(p =>
-    ({ name: p.name, minutes: p.minutes, total: p.total, color: `var(--flow-${p.rank + 1})` }));
-  const rest = data.projects.filter(p => p.rank >= FLOW_COLOURS);
-  if (rest.length) {
-    const minutes = data.buckets.map((_, i) => rest.reduce((a, p) => a + p.minutes[i], 0));
-    series.push({ name: `other (${rest.length})`, minutes, total: rest.reduce((a, p) => a + p.total, 0),
-      color: "var(--faint)", other: true });
+class FlowChart {
+  constructor(body, st) {
+    this.body = body; this.st = st;
+    this.W = 1080; this.H = 380; this.padT = 8; this.padB = 26; this.padL = 4; this.padR = 150;
+    this.svg = null;
+  }
+  plotW() { return this.W - this.padL - this.padR; }
+  x(t) { const { t0, t1 } = this.st.view; return this.padL + (t - t0) / (t1 - t0) * this.plotW(); }
+  scale() { return this.svg ? this.svg.getBoundingClientRect().width / this.W : 1; }
+  msPerPx() { const { t0, t1 } = this.st.view; return (t1 - t0) / (this.plotW() * this.scale()); }
+  timeAt(clientX) {
+    if (!this.svg) return (this.st.view.t0 + this.st.view.t1) / 2;
+    const r = this.svg.getBoundingClientRect();
+    const px = (clientX - r.left) / this.scale() - this.padL;
+    return this.st.view.t0 + Math.min(Math.max(px / this.plotW(), 0), 1) * (this.st.view.t1 - this.st.view.t0);
+  }
+  unit() { return this.st.data ? this.st.data.unit : flowUnit(this.st.view.t1 - this.st.view.t0)[0]; }
+  fmtDate(ms, withYear) {
+    return new Date(ms).toLocaleDateString(undefined,
+      withYear ? { month: "short", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" });
+  }
+  fmtTime(ms) { return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); }
+  rangeLabel() {
+    const { t0, t1 } = this.st.view;
+    if (t1 - t0 <= 2 * DAY) return `${this.fmtDate(t0)} ${this.fmtTime(t0)} - ${this.fmtDate(t1)} ${this.fmtTime(t1)}`;
+    return `${this.fmtDate(t0)} - ${this.fmtDate(t1, true)}`;
+  }
+  bucketName(i) {
+    const e = this.st.data.edges, u = this.st.data.unit;
+    if (u === "1w") return "week of " + this.fmtDate(e[i]);
+    if (u === "1d") return new Date(e[i]).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    return `${this.fmtDate(e[i])}, ${this.fmtTime(e[i])}-${this.fmtTime(e[i + 1])}`;
   }
 
-  const W = 1080, H = 380, padT = 8, padB = 26, padL = 4, padR = 150, nodeW = 9, gap = 3;
-  const colTotals = data.buckets.map((_, i) => series.reduce((a, s) => a + s.minutes[i], 0));
-  const maxNodes = Math.max(...data.buckets.map((_, i) => series.filter(s => s.minutes[i] > 0).length), 1);
-  const maxTotal = Math.max(...colTotals, 1);
-  const k = (H - padT - padB - gap * (maxNodes - 1)) / maxTotal;
-  const colX = i => padL + (n === 1 ? 0 : i * (W - padL - padR - nodeW) / (n - 1));
+  render() {
+    const { body, st } = this;
+    const data = st.data;
+    if (!data) return;
+    body.textContent = "";
+    const { W, H, padT, padB } = this;
+    const n = data.buckets.length;
+    const edges = data.edges;
+    const { t0, t1 } = st.view;
+    const visible = i => edges[i + 1] > t0 && edges[i] < t1;
 
-  // Per column, biggest project on top (other always last), so rank changes
-  // show up as ribbons crossing.
-  const pos = data.buckets.map((_, i) => {
-    const order = series.filter(s => s.minutes[i] > 0)
-      .sort((a, b) => (a.other - b.other) || (b.minutes[i] - a.minutes[i]));
-    const hs = order.map(s => Math.max(s.minutes[i] * k, 1));
-    const colH = hs.reduce((a, h) => a + h, 0) + gap * Math.max(order.length - 1, 0);
-    const out = new Map(); let y = padT + (H - padT - padB - colH) / 2;   // centred, alluvial-style
-    order.forEach((s, j) => { out.set(s, [y, hs[j]]); y += hs[j] + gap; });
-    return out;
-  });
-
-  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
-    "aria-label": "Hands-on time per project over time" });
-  const tip = el("div", "flow-tip"); tip.hidden = true;
-  const label = d => {
-    const dt = new Date(d + "T00:00");
-    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  };
-  const bucketName = i => data.bucket === "week" ? "week of " + label(data.buckets[i]) : label(data.buckets[i]);
-  const hover = (s, i, ev) => {
-    svg.classList.add("hl");
-    svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("on", e.dataset.p === s.name));
-    const v = i == null ? `${fmtHours(s.total)} total` : `${fmtHours(s.minutes[i])} · ${bucketName(i)}`;
-    tip.textContent = `${s.name} - ${v}`;
-    tip.hidden = false;
-    const r = body.getBoundingClientRect();
-    tip.style.left = (ev.clientX - r.left + body.scrollLeft + 12) + "px";
-    tip.style.top = (ev.clientY - r.top + body.scrollTop + 12) + "px";
-  };
-  const unhover = () => { svg.classList.remove("hl"); tip.hidden = true; };
-  const bind = (e, s, i) => { e.addEventListener("mousemove", ev => hover(s, i, ev)); e.addEventListener("mouseleave", unhover); };
-
-  const ribs = svgEl("g", {}), nodes = svgEl("g", {});
-  svg.append(ribs, nodes);
-  for (const s of series) {
-    for (let i = 0; i < n; i++) {
-      const a = pos[i].get(s);
-      if (!a) continue;
-      const x = colX(i);
-      const r = svgEl("rect", { x, y: a[0], width: nodeW, height: a[1], rx: 2, fill: s.color,
-        class: "node", "data-p": s.name });
-      bind(r, s, i); nodes.appendChild(r);
-      const b = i + 1 < n && pos[i + 1].get(s);
-      if (!b) continue;
-      const x0 = x + nodeW, x1 = colX(i + 1), mx = (x0 + x1) / 2;
-      const d = `M${x0},${a[0]} C${mx},${a[0]} ${mx},${b[0]} ${x1},${b[0]}` +
-        ` L${x1},${b[0] + b[1]} C${mx},${b[0] + b[1]} ${mx},${a[0] + a[1]} ${x0},${a[0] + a[1]} Z`;
-      const p = svgEl("path", { d, fill: s.color, class: "rib", "data-p": s.name });
-      bind(p, s, null); ribs.appendChild(p);
+    // A project's colour comes from its all-time rank, so it's the same at
+    // every zoom. Outside the all-time top FLOW_COLOURS it folds into "other".
+    const series = data.projects.filter(p => p.rank < FLOW_COLOURS).map(p =>
+      ({ name: p.name, minutes: p.minutes, color: `var(--flow-${p.rank + 1})` }));
+    const rest = data.projects.filter(p => p.rank >= FLOW_COLOURS);
+    if (rest.length) {
+      series.push({ name: `other (${rest.length})`, color: "var(--faint)", other: true,
+        minutes: data.buckets.map((_, i) => rest.reduce((a, p) => a + p.minutes[i], 0)) });
     }
-  }
 
-  // Name each project once, beside its last block, where there's room.
-  const placed = [];
-  for (const s of series) {
-    let i = n - 1; while (i >= 0 && !pos[i].get(s)) i--;
-    if (i < 0) continue;
-    const [y, h] = pos[i].get(s);
-    const cy = y + h / 2;
-    if (i < n - 1 && h < 12) continue;               // mid-chart labels need a fat block
-    if (placed.some(p => Math.abs(p - cy) < 12 && i === n - 1)) continue;
-    if (i === n - 1) placed.push(cy);
-    const t = svgEl("text", { x: colX(i) + nodeW + 5, y: cy + 4, "data-p": s.name, class: "node" });
-    t.textContent = s.name; bind(t, s, null); nodes.appendChild(t);
-  }
+    const cols = [...Array(n).keys()];
+    const vis = cols.filter(visible);
+    const colTotal = i => series.reduce((a, s) => a + s.minutes[i], 0);
+    const maxTotal = Math.max(...vis.map(colTotal), 1);
+    const maxNodes = Math.max(...vis.map(i => series.filter(s => s.minutes[i] > 0).length), 1);
+    const colPx = (this.x(edges[1] ?? edges[0]) - this.x(edges[0])) || 20;
+    const nodeW = Math.max(2, Math.min(9, colPx * 0.35));
+    const gap = 3;
+    const k = (H - padT - padB - gap * (maxNodes - 1)) / maxTotal;
+    const cx = i => this.x((edges[i] + edges[i + 1]) / 2) - nodeW / 2;
 
-  // Date axis, thinned to about a dozen ticks.
-  const every = Math.ceil(n / 12);
-  for (let i = 0; i < n; i += every) {
-    const t = svgEl("text", { x: colX(i) + nodeW / 2, y: H - 8, "text-anchor": i === 0 ? "start" : "middle", class: "axis" });
-    t.textContent = label(data.buckets[i]); svg.appendChild(t);
-  }
+    // Per column, biggest project on top (other always last), centred.
+    const pos = cols.map(i => {
+      const order = series.filter(s => s.minutes[i] > 0)
+        .sort((a, b) => ((a.other ? 1 : 0) - (b.other ? 1 : 0)) || (b.minutes[i] - a.minutes[i]));
+      const hs = order.map(s => Math.max(s.minutes[i] * k, 1));
+      const colH = hs.reduce((a, h) => a + h, 0) + gap * Math.max(order.length - 1, 0);
+      const out = new Map(); let y = padT + (H - padT - padB - colH) / 2;
+      order.forEach((s, j) => { out.set(s, [y, hs[j]]); y += hs[j] + gap; });
+      return out;
+    });
 
-  const total = series.reduce((a, s) => a + s.total, 0);
-  // Columns rebuilt from prompt history (transcripts pruned) get a dashed underline.
-  for (const i of data.estimated || []) {
-    svg.appendChild(svgEl("line", { x1: colX(i) - 2, x2: colX(i) + nodeW + 2, y1: H - 22, y2: H - 22,
-      stroke: "var(--faint)", "stroke-dasharray": "2 2" }));
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+      "aria-label": "Hands-on time per project over time" });
+    this.svg = svg;
+    const clipId = "flowclip";
+    const defs = svgEl("defs", {});
+    const cp = svgEl("clipPath", { id: clipId });
+    cp.appendChild(svgEl("rect", { x: 0, y: 0, width: W - this.padR + 2, height: H }));
+    defs.appendChild(cp); svg.appendChild(defs);
+
+    const tip = el("div", "flow-tip"); tip.hidden = true;
+    const hover = (s, i, ev) => {
+      if (body.classList.contains("dragging")) return;
+      svg.classList.add("hl");
+      svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("on", e.dataset.p === s.name));
+      tip.textContent = i == null ? s.name : `${s.name} - ${fmtHours(s.minutes[i])} · ${this.bucketName(i)}`;
+      tip.hidden = false;
+      const r = body.getBoundingClientRect();
+      tip.style.left = (ev.clientX - r.left + body.scrollLeft + 12) + "px";
+      tip.style.top = (ev.clientY - r.top + body.scrollTop + 12) + "px";
+    };
+    const unhover = () => { svg.classList.remove("hl"); tip.hidden = true; };
+    const bind = (e, s, i) => { e.addEventListener("mousemove", ev => hover(s, i, ev)); e.addEventListener("mouseleave", unhover); };
+
+    const plot = svgEl("g", { "clip-path": `url(#${clipId})` });
+    const ribs = svgEl("g", {}), nodes = svgEl("g", {}), labels = svgEl("g", {});
+    plot.append(ribs, nodes);
+    svg.append(plot, labels);
+    const near = i => edges[i + 1] > t0 - (t1 - t0) * 0.1 && edges[i] < t1 + (t1 - t0) * 0.1;
+    for (const s of series) {
+      for (let i = 0; i < n; i++) {
+        const a = pos[i].get(s);
+        if (!a || !near(i)) continue;
+        const x = cx(i);
+        const r = svgEl("rect", { x, y: a[0], width: nodeW, height: a[1], rx: Math.min(2, nodeW / 3),
+          fill: s.color, class: "node", "data-p": s.name });
+        bind(r, s, i); nodes.appendChild(r);
+        const b = i + 1 < n && pos[i + 1].get(s);
+        if (!b) continue;
+        const x0 = x + nodeW, x1 = cx(i + 1), mx = (x0 + x1) / 2;
+        const d = `M${x0},${a[0]} C${mx},${a[0]} ${mx},${b[0]} ${x1},${b[0]}` +
+          ` L${x1},${b[0] + b[1]} C${mx},${b[0] + b[1]} ${mx},${a[0] + a[1]} ${x0},${a[0] + a[1]} Z`;
+        const p = svgEl("path", { d, fill: s.color, class: "rib", "data-p": s.name });
+        bind(p, s, null); ribs.appendChild(p);
+      }
+    }
+
+    // Name each project once, beside its last visible block, where there's room.
+    const lastVis = vis.length ? vis[vis.length - 1] : -1;
+    const placed = [];
+    for (const s of series) {
+      let i = lastVis; while (i >= 0 && visible(i) && !pos[i].get(s)) i--;
+      if (i < 0 || !visible(i)) continue;
+      const [y, h] = pos[i].get(s);
+      const cy = y + h / 2;
+      if (i < lastVis && h < 12) continue;            // mid-chart labels need a fat block
+      const lx = Math.min(cx(i) + nodeW + 5, W - this.padR + 6);
+      if (placed.some(p => Math.abs(p.y - cy) < 12 && Math.abs(p.x - lx) < 130)) continue;
+      placed.push({ x: lx, y: cy });
+      const t = svgEl("text", { x: lx, y: cy + 4,
+        "data-p": s.name, class: "node" });
+      t.textContent = s.name; bind(t, s, null); labels.appendChild(t);
+    }
+
+    // Time axis: dates at midnight win, then times, each kept 60 units apart.
+    const sub = !["1d", "1w"].includes(data.unit);
+    const isMidnight = ms => { const d = new Date(ms); return d.getHours() === 0 && d.getMinutes() === 0; };
+    const visEdges = edges.filter(e => e >= t0 && e <= t1);
+    const ticks = [];
+    const tryTick = (e, day) => {
+      const x = this.x(e);
+      if (x < this.padL + 12 || x > W - this.padR - 8) return;
+      if (ticks.some(t => Math.abs(t.x - x) < 60)) return;
+      ticks.push({ x, e, day });
+    };
+    if (sub) visEdges.filter(isMidnight).forEach(e => tryTick(e, true));
+    visEdges.forEach(e => tryTick(e, !sub));
+    for (const { x, e, day } of ticks) {
+      const t = svgEl("text", { x, y: H - 8, "text-anchor": "middle", class: "axis" + (sub && day ? " day" : "") });
+      t.textContent = day ? this.fmtDate(e) : this.fmtTime(e);
+      svg.appendChild(t);
+    }
+    if (sub) visEdges.filter(isMidnight).forEach(e => svg.appendChild(svgEl("line",
+      { x1: this.x(e), x2: this.x(e), y1: padT, y2: H - 22, class: "daymark" })));
+
+    // Columns rebuilt from prompt history (transcripts pruned) get a dashed underline.
+    for (const i of data.estimated || []) {
+      if (!visible(i)) continue;
+      svg.appendChild(svgEl("line", { x1: cx(i) - 2, x2: cx(i) + nodeW + 2, y1: H - 22, y2: H - 22,
+        stroke: "var(--faint)", "stroke-dasharray": "2 2" }));
+    }
+
+    // Total for the visible window, pro-rating buckets cut by its edges.
+    let total = 0;
+    for (const i of vis) {
+      const f = (Math.min(edges[i + 1], t1) - Math.max(edges[i], t0)) / (edges[i + 1] - edges[i]);
+      total += colTotal(i) * f;
+    }
+    const note = el("div", "flow-note");
+    const unitName = { "15m": "15 minutes", "30m": "30 minutes", "1h": "hour", "3h": "3 hours",
+      "6h": "6 hours", "12h": "12 hours", "1d": "day", "1w": "week" }[data.unit];
+    note.textContent = `${fmtHours(total)} hands-on in view, one column per ${unitName}. ` +
+      "Pinch to zoom, swipe or drag to pan, double-click to zoom in." +
+      ((data.estimated || []).some(visible) ? " Dashed columns are estimated from your prompt history." : "");
+    if (!vis.some(i => colTotal(i) > 0)) {
+      const empty = svgEl("text", { x: this.padL + this.plotW() / 2, y: H / 2, "text-anchor": "middle", class: "axis" });
+      empty.textContent = "No sessions in this window";
+      svg.appendChild(empty);
+    }
+    // Legend: every project in view with its hours, biggest first.
+    const legend = el("div", "flow-legend");
+    const inView = s => vis.reduce((a, i) => a + s.minutes[i] *
+      (Math.min(edges[i + 1], t1) - Math.max(edges[i], t0)) / (edges[i + 1] - edges[i]), 0);
+    series.map(s => [s, inView(s)]).filter(([, m]) => m >= 0.5).sort((a, b) => b[1] - a[1])
+      .forEach(([s, m]) => {
+        const item = el("span", "item");
+        const sw = el("i"); sw.style.background = s.color;
+        const name = el("span"); name.textContent = s.name;
+        const hrs = el("span", "hrs"); hrs.textContent = fmtHours(m);
+        item.append(sw, name, hrs);
+        item.addEventListener("mouseenter", () => {
+          svg.classList.add("hl");
+          svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("on", e.dataset.p === s.name));
+        });
+        item.addEventListener("mouseleave", unhover);
+        legend.appendChild(item);
+      });
+    body.append(svg, tip, legend, note);
   }
-  const note = el("div", "flow-note");
-  note.textContent = `${fmtHours(total)} hands-on across ${data.projects.length} projects. ` +
-    "Time counts gaps between transcript events under 15 minutes." +
-    ((data.estimated || []).length ? " Dashed columns are estimated from your prompt history, " +
-      "since their transcripts were pruned." : "");
-  body.append(svg, tip, note);
 }
 $("#flowBtn").onclick = openFlow;
 </script>
