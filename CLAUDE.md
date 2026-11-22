@@ -114,6 +114,15 @@ logbook/
   Short LLM session summaries and past days' one-sentence summaries are generated in a
   background pool, never on the request path: the response says `pending: true` while any are
   outstanding and the UI re-polls. Session summaries persist only once the session is quiet.
+- **Project flow**: the header's `flow` pill opens an overlay (not a tab - the page is kept
+  untabbed on purpose) with an alluvial chart of hands-on time per project per week or day.
+  `GET /api/flow?bucket=week|day&count=N` sums gaps between consecutive transcript events
+  under `FLOW_IDLE_GAP` (15 min), skipping session-days under `MIN_SESSION_TOKENS`. A project's
+  colour is fixed by its all-time rank (`rank` in the response), so it matches across ranges;
+  the all-time top 12 get `--flow-1..12`, the rest fold into "other". Days before the
+  first surviving CLI transcript (Claude Code prunes them unless `cleanupPeriodDays` is raised)
+  are estimated from `~/.claude/history.jsonl` (`CLAUDE_HISTORY_FILE`), the prompt log, and
+  listed in `estimated`.
 - **Theme**: light and dark palettes are `:root` tokens in `index.html`; dark follows the OS
   unless the header pill pins light or dark (`data-theme` on `<html>`, saved in localStorage
   and applied by an inline script before first paint). New colours must be tokens with a value

@@ -26,7 +26,7 @@ import threading
 import html
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
@@ -69,6 +69,13 @@ COWORK_SESSIONS_DIR = Path(
         "COWORK_SESSIONS_DIR",
         Path.home() / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions",
     )
+).expanduser()
+
+# Claude Code's log of every prompt typed (timestamp, project, session). Unlike
+# the transcripts it isn't pruned by cleanupPeriodDays, so the flow chart falls
+# back to it for days whose transcripts are gone.
+HISTORY_FILE = Path(
+    os.environ.get("CLAUDE_HISTORY_FILE", Path.home() / ".claude" / "history.jsonl")
 ).expanduser()
 
 # Personal settings live in config.json beside this file (gitignored; copy
@@ -958,6 +965,155 @@ def _compute_day(target):
 
 
 # --------------------------------------------------------------------------- #
+# Project flow: hands-on time per project per day/week, for the flow chart
+# --------------------------------------------------------------------------- #
+# Time is measured from the transcript itself: the gap between two consecutive
+# events in a session counts as work, unless it's longer than FLOW_IDLE_GAP
+# (the agent was left alone). Wall-clock start-to-end would credit a session
+# left open overnight with eight hours.
+FLOW_IDLE_GAP = 15 * 60
+FLOW_MAX_BUCKETS = 104
+
+
+def _bucket_start(d, bucket):
+    return d - timedelta(days=d.weekday()) if bucket == "week" else d
+
+
+def _active_minutes_by_project_day(sessions):
+    """{project_short: {date: minutes}} over the given sessions."""
+    out = {}
+    for s in sessions:
+        by_day = {}
+        for ts, _, tok in s["events"]:
+            by_day.setdefault(ts.date(), []).append((ts, tok))
+        for day, evs in by_day.items():
+            if sum(t for _, t in evs) < MIN_SESSION_TOKENS:
+                continue
+            times = sorted(ts for ts, _ in evs)
+            active = sum(g for g in ((b - a).total_seconds() for a, b in zip(times, times[1:]))
+                         if g <= FLOW_IDLE_GAP)
+            days = out.setdefault(s["project_short"], {})
+            days[day] = days.get(day, 0.0) + active / 60
+    return out
+
+
+# Prompt history only has your prompts, not the agent's replies, so the gap cap
+# is the same and each burst of prompts gets a flat tail for the agent's last
+# reply. Calibrated against Oct-Nov 2026, where both sources exist: 15 min +
+# 5 min reproduced the transcript hours to within 1% overall.
+HISTORY_TAIL_MIN = 5
+_history_cache = {"mtime": None, "data": {}}
+
+
+def _history_minutes_by_project_day():
+    """{project_short: {date: minutes}} estimated from HISTORY_FILE."""
+    try:
+        mtime = HISTORY_FILE.stat().st_mtime
+    except OSError:
+        return {}
+    if _history_cache["mtime"] == mtime:
+        return _history_cache["data"]
+    prompts = {}
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                    ts = datetime.fromtimestamp(obj["timestamp"] / 1000)
+                    proj = obj["project"]
+                except Exception:
+                    continue
+                if not isinstance(proj, str) or not proj:
+                    continue
+                key = (proj, obj.get("sessionId"), ts.date())
+                prompts.setdefault(key, []).append(ts)
+    except OSError:
+        return {}
+    shorts = {}
+    out = {}
+    for (proj, _, day), times in prompts.items():
+        if proj not in shorts:
+            shorts[proj] = Path(canonical_project(proj)).name or proj
+        times.sort()
+        minutes = HISTORY_TAIL_MIN
+        for a, b in zip(times, times[1:]):
+            g = (b - a).total_seconds()
+            minutes += g / 60 if g <= FLOW_IDLE_GAP else HISTORY_TAIL_MIN
+        days = out.setdefault(shorts[proj], {})
+        days[day] = days.get(day, 0.0) + minutes
+    _history_cache.update(mtime=mtime, data=out)
+    return out
+
+
+def _flow_minutes():
+    """Transcript minutes, with any day whose transcripts were (partly) pruned
+    replaced by its prompt-history estimate. A day counts as pruned when its
+    CLI transcripts cover under half the time history shows - pruning isn't a
+    clean cutoff, some sessions from a day survive while others go. Cowork
+    sessions aren't in the history file, so they're always kept.
+    Returns (per_day, estimated_days)."""
+    cli, cowork = {}, {}
+    for s in collect_sessions():
+        target = cowork if s.get("source") == "cowork" else cli
+        one = _active_minutes_by_project_day([s])
+        for proj, days in one.items():
+            for day, m in days.items():
+                target.setdefault(day, {})
+                target[day][proj] = target[day].get(proj, 0.0) + m
+    hist = {}
+    for proj, days in _history_minutes_by_project_day().items():
+        for day, m in days.items():
+            hist.setdefault(day, {})[proj] = m
+
+    estimated = set()
+    per_day = {}
+    for day in set(cli) | set(cowork) | set(hist):
+        c, h = cli.get(day, {}), hist.get(day, {})
+        use = c
+        if sum(c.values()) < 0.5 * sum(h.values()):
+            use, _ = h, estimated.add(day)
+        for src in (use, cowork.get(day, {})):
+            for proj, m in src.items():
+                per_day.setdefault(proj, {})
+                per_day[proj][day] = per_day[proj].get(day, 0.0) + m
+    return per_day, estimated
+
+
+def project_flow(bucket="week", count=12, today=None):
+    """Minutes per project per bucket, oldest bucket first. Session-days under
+    MIN_SESSION_TOKENS are skipped, same as the daily log. Each project also
+    carries `rank`, its place by all-time hours, so the UI can give it the
+    same colour whatever range is showing."""
+    if bucket not in ("day", "week"):
+        raise ValueError("bucket must be 'day' or 'week'")
+    count = max(1, min(int(count), FLOW_MAX_BUCKETS))
+    step = timedelta(weeks=1) if bucket == "week" else timedelta(days=1)
+    last = _bucket_start(today or date.today(), bucket)
+    starts = [last - step * (count - 1 - i) for i in range(count)]
+    index = {d: i for i, d in enumerate(starts)}
+
+    per_day, estimated = _flow_minutes()
+    all_time = sorted(per_day, key=lambda p: (-sum(per_day[p].values()), p))
+    rank = {p: i for i, p in enumerate(all_time)}
+
+    projects = []
+    for name, days in per_day.items():
+        row = [0.0] * count
+        for day, m in days.items():
+            i = index.get(_bucket_start(day, bucket))
+            if i is not None:
+                row[i] += m
+        if sum(row) >= 1:
+            projects.append({"name": name, "minutes": [round(x, 1) for x in row],
+                             "total": round(sum(row), 1), "rank": rank[name]})
+    projects.sort(key=lambda p: -p["total"])
+    est = sorted({index[_bucket_start(d, bucket)] for d in estimated
+                  if _bucket_start(d, bucket) in index})
+    return {"bucket": bucket, "buckets": [d.isoformat() for d in starts], "projects": projects,
+            "estimated": est}
+
+
+# --------------------------------------------------------------------------- #
 # Handoff docs attached to a backlog task / idea
 # --------------------------------------------------------------------------- #
 # A handoff doc gets dragged onto a card straight from Finder or an editor. The
@@ -1202,6 +1358,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"error": "no such image"})
                 else:
                     self._send(200, got[0], got[1])
+            elif path == "/api/flow":
+                q = parse_qs(parsed.query)
+                try:
+                    flow = project_flow(q.get("bucket", ["week"])[0], q.get("count", ["12"])[0])
+                except ValueError as e:
+                    self._send(400, {"error": str(e)})
+                else:
+                    self._send(200, flow)
             elif path == "/api/log/dates":
                 self._send(200, {"dates": available_dates()})
             elif path == "/api/log":
