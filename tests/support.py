@@ -75,6 +75,7 @@ class SandboxedServerTest(unittest.TestCase):
             "LOGBOOK_CONFIG": str(self.config_file),
             "CLAUDE_PROJECTS_DIR": str(self.projects_dir),
             "COWORK_SESSIONS_DIR": str(self.cowork_dir),
+            "CLAUDE_HISTORY_FILE": str(self.tmp / "history.jsonl"),
             # No `claude` reachable: summaries stay off.
             "PATH": str(empty_bin),
         })
@@ -92,7 +93,7 @@ class SandboxedServerTest(unittest.TestCase):
 
         # Belt and braces: refuse to run if anything points outside the sandbox.
         for attr in ("DATA_DIR", "BOARD_FILE", "HANDOFF_DIR", "CONFIG_FILE",
-                     "PROJECTS_DIR", "COWORK_SESSIONS_DIR", "SUMMARY_CACHE_FILE",
+                     "PROJECTS_DIR", "COWORK_SESSIONS_DIR", "HISTORY_FILE", "SUMMARY_CACHE_FILE",
                      "DAY_LOG_CACHE_FILE", "DAY_SUMMARY_FILE", "BOARD_BACKUP_DIR"):
             path = Path(getattr(mod, attr)).resolve()
             assert self.tmp in path.parents, f"{attr} escaped the sandbox: {path}"

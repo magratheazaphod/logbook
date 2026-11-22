@@ -39,6 +39,7 @@
     --scrim:rgba(27,29,30,.42);
     --flow-1:#B23A2E;--flow-2:#3F6E8C;--flow-3:#5E8A4E;--flow-4:#C08A2E;
     --flow-5:#7A4E9A;--flow-6:#2E8A84;--flow-7:#A85A7A;--flow-8:#6B6F3A;
+    --flow-9:#8C5A3C;--flow-10:#4E5FA8;--flow-11:#9A8A2E;--flow-12:#3C7A5E;
     --radius:10px;
     --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
     --shadow-float:0 3px 10px rgba(20,20,20,.10),0 1px 2px rgba(20,20,20,.06);
@@ -60,6 +61,7 @@
       --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
       --flow-1:#E07A6C;--flow-2:#7FA8C6;--flow-3:#93BC82;--flow-4:#E0B464;
       --flow-5:#B28ED0;--flow-6:#6CC2BB;--flow-7:#D68FAE;--flow-8:#ADB277;
+      --flow-9:#C99677;--flow-10:#93A0E0;--flow-11:#D2C46C;--flow-12:#7CC0A0;
       --scrim:rgba(0,0,0,.6);
       --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
       --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
@@ -76,6 +78,7 @@
     --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
     --flow-1:#E07A6C;--flow-2:#7FA8C6;--flow-3:#93BC82;--flow-4:#E0B464;
     --flow-5:#B28ED0;--flow-6:#6CC2BB;--flow-7:#D68FAE;--flow-8:#ADB277;
+    --flow-9:#C99677;--flow-10:#93A0E0;--flow-11:#D2C46C;--flow-12:#7CC0A0;
     --scrim:rgba(0,0,0,.6);
     --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
     --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
@@ -2096,7 +2099,7 @@ const FLOW_RANGES = [
   { key: "w52", label: "1 year", bucket: "week", count: 52 },
   { key: "d30", label: "30 days", bucket: "day", count: 30 },
 ];
-const FLOW_TOP = 8;
+const FLOW_COLOURS = 12;   // --flow-1..12 tokens
 const SVG_NS = "http://www.w3.org/2000/svg";
 function svgEl(t, attrs) {
   const e = document.createElementNS(SVG_NS, t);
@@ -2156,10 +2159,12 @@ function renderFlow(body, data) {
   const n = data.buckets.length;
   if (!data.projects.length) { body.textContent = "No sessions in this range."; return; }
 
-  // Top projects by total keep their own colour; the long tail folds into "other".
-  const series = data.projects.slice(0, FLOW_TOP).map((p, i) =>
-    ({ name: p.name, minutes: p.minutes, total: p.total, color: `var(--flow-${i + 1})` }));
-  const rest = data.projects.slice(FLOW_TOP);
+  // A project's colour comes from its all-time rank, not its rank in this
+  // range, so it keeps the same colour in every view. Projects outside the
+  // all-time top FLOW_COLOURS fold into "other".
+  const series = data.projects.filter(p => p.rank < FLOW_COLOURS).map(p =>
+    ({ name: p.name, minutes: p.minutes, total: p.total, color: `var(--flow-${p.rank + 1})` }));
+  const rest = data.projects.filter(p => p.rank >= FLOW_COLOURS);
   if (rest.length) {
     const minutes = data.buckets.map((_, i) => rest.reduce((a, p) => a + p.minutes[i], 0));
     series.push({ name: `other (${rest.length})`, minutes, total: rest.reduce((a, p) => a + p.total, 0),
@@ -2248,9 +2253,16 @@ function renderFlow(body, data) {
   }
 
   const total = series.reduce((a, s) => a + s.total, 0);
+  // Columns rebuilt from prompt history (transcripts pruned) get a dashed underline.
+  for (const i of data.estimated || []) {
+    svg.appendChild(svgEl("line", { x1: colX(i) - 2, x2: colX(i) + nodeW + 2, y1: H - 22, y2: H - 22,
+      stroke: "var(--faint)", "stroke-dasharray": "2 2" }));
+  }
   const note = el("div", "flow-note");
   note.textContent = `${fmtHours(total)} hands-on across ${data.projects.length} projects. ` +
-    "Time counts gaps between transcript events under 15 minutes.";
+    "Time counts gaps between transcript events under 15 minutes." +
+    ((data.estimated || []).length ? " Dashed columns are estimated from your prompt history, " +
+      "since their transcripts were pruned." : "");
   body.append(svg, tip, note);
 }
 $("#flowBtn").onclick = openFlow;
