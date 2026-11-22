@@ -37,6 +37,8 @@
     --warn-bg:#F7EAD9;
     --warn-line:#E8D3B3;
     --scrim:rgba(27,29,30,.42);
+    --flow-1:#B23A2E;--flow-2:#3F6E8C;--flow-3:#5E8A4E;--flow-4:#C08A2E;
+    --flow-5:#7A4E9A;--flow-6:#2E8A84;--flow-7:#A85A7A;--flow-8:#6B6F3A;
     --radius:10px;
     --shadow:0 1px 2px rgba(20,20,20,.05),0 1px 1px rgba(20,20,20,.03);
     --shadow-float:0 3px 10px rgba(20,20,20,.10),0 1px 2px rgba(20,20,20,.06);
@@ -56,6 +58,8 @@
       --accent-soft:#452622;--accent-soft-line:#5C332D;--on-accent:#1B1412;--done:#7A7D7A;
       --cowork-ink:#BDB3F2;--cowork-bg:#2B2640;--cowork-line:#403862;
       --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
+      --flow-1:#E07A6C;--flow-2:#7FA8C6;--flow-3:#93BC82;--flow-4:#E0B464;
+      --flow-5:#B28ED0;--flow-6:#6CC2BB;--flow-7:#D68FAE;--flow-8:#ADB277;
       --scrim:rgba(0,0,0,.6);
       --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
       --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
@@ -70,6 +74,8 @@
     --accent-soft:#452622;--accent-soft-line:#5C332D;--on-accent:#1B1412;--done:#7A7D7A;
     --cowork-ink:#BDB3F2;--cowork-bg:#2B2640;--cowork-line:#403862;
     --warn-ink:#E3B183;--warn-bg:#3A2D1E;--warn-line:#54402A;
+    --flow-1:#E07A6C;--flow-2:#7FA8C6;--flow-3:#93BC82;--flow-4:#E0B464;
+    --flow-5:#B28ED0;--flow-6:#6CC2BB;--flow-7:#D68FAE;--flow-8:#ADB277;
     --scrim:rgba(0,0,0,.6);
     --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
     --shadow-float:0 3px 10px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
@@ -295,6 +301,27 @@
     box-shadow:var(--shadow-lift);pointer-events:none;white-space:nowrap;
   }
 
+  /* Project flow overlay ------------------------------------------------- */
+  .flow-sheet{width:min(1120px,100%)}
+  .flow-ctrl{display:flex;gap:6px;flex:none}
+  .flow-ctrl button{font:500 11px var(--mono);color:var(--muted);background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer}
+  .flow-ctrl button.on,.flow-ctrl button:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .flow-body{padding:16px 20px 20px;overflow:auto;position:relative}
+  .flow-body svg{display:block;width:100%;height:auto}
+  .flow-body text{font-family:var(--mono);font-size:11px;fill:var(--ink)}
+  .flow-body text.axis{fill:var(--muted);font-size:10.5px}
+  .flow-body .rib{opacity:.38;transition:opacity .12s}
+  .flow-body .node{transition:opacity .12s}
+  .flow-body svg.hl .rib{opacity:.07}
+  .flow-body svg.hl .node{opacity:.25}
+  .flow-body svg.hl .on.rib{opacity:.6}
+  .flow-body svg.hl .on.node{opacity:1}
+  .flow-tip{position:absolute;pointer-events:none;background:var(--paper);
+    border:1px solid var(--line-strong);border-radius:6px;box-shadow:var(--shadow-float);
+    padding:4px 8px;font:11.5px var(--mono);white-space:nowrap}
+  .flow-tip[hidden]{display:none}
+  .flow-note{color:var(--faint);font:11px var(--mono);margin-top:8px}
   /* Handoff overlay ------------------------------------------------------- */
   .doc-overlay{
     position:fixed;inset:0;z-index:60;background:var(--scrim);
@@ -566,6 +593,7 @@
     </div>
     <div class="top-right">
       <div class="today" id="todayStamp"></div>
+      <button class="theme-toggle" id="flowBtn" type="button" title="Which projects your time went to, over time">flow</button>
       <button class="theme-toggle" id="themeToggle" type="button"></button>
     </div>
   </header>
@@ -2057,6 +2085,175 @@ async function boot() {
   loadLog();
 }
 boot();
+
+// ---- project flow -------------------------------------------------------
+// An alluvial chart of where hands-on time went: one column per day/week,
+// each project a block sized by its active hours, ribbons joining a project's
+// blocks across columns. Opens as an overlay so the page itself stays one view.
+const FLOW_RANGES = [
+  { key: "w12", label: "12 weeks", bucket: "week", count: 12 },
+  { key: "w26", label: "26 weeks", bucket: "week", count: 26 },
+  { key: "w52", label: "1 year", bucket: "week", count: 52 },
+  { key: "d30", label: "30 days", bucket: "day", count: 30 },
+];
+const FLOW_TOP = 8;
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(t, attrs) {
+  const e = document.createElementNS(SVG_NS, t);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function fmtHours(min) {
+  return min >= 60 ? (min / 60).toFixed(min >= 600 ? 0 : 1) + "h" : Math.round(min) + "m";
+}
+
+function openFlow() {
+  const overlay = el("div", "doc-overlay");
+  const sheet = el("div", "doc-sheet flow-sheet");
+  const head = el("div", "doc-head");
+  const title = document.createElement("h3"); title.textContent = "Project flow";
+  const ctrl = el("div", "flow-ctrl");
+  const close = el("button", "doc-close"); close.textContent = "✕";
+  close.setAttribute("aria-label", "Close");
+  head.append(title, ctrl, close);
+  const body = el("div", "flow-body");
+  sheet.append(head, body);
+  overlay.appendChild(sheet);
+
+  let current = "w12";
+  try { current = localStorage.getItem("logbook-flow-range") || current; } catch (e) {}
+  if (!FLOW_RANGES.some(r => r.key === current)) current = "w12";
+  const buttons = FLOW_RANGES.map(r => {
+    const b = el("button"); b.type = "button"; b.textContent = r.label;
+    b.onclick = () => { current = r.key; try { localStorage.setItem("logbook-flow-range", r.key); } catch (e) {} load(); };
+    ctrl.appendChild(b);
+    return [r.key, b];
+  });
+
+  function load() {
+    buttons.forEach(([k, b]) => b.classList.toggle("on", k === current));
+    const r = FLOW_RANGES.find(x => x.key === current);
+    body.textContent = "Loading…";
+    fetch(`/api/flow?bucket=${r.bucket}&count=${r.count}`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => { if (current === r.key) renderFlow(body, data); })
+      .catch(() => { body.textContent = "Couldn't load the flow."; });
+  }
+
+  const dismiss = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = ev => { if (ev.key === "Escape") dismiss(); };
+  close.onclick = dismiss;
+  let pressedBackdrop = false;
+  overlay.onmousedown = ev => { pressedBackdrop = ev.target === overlay; };
+  overlay.onclick = ev => { if (pressedBackdrop && ev.target === overlay) dismiss(); };
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+  load();
+}
+
+function renderFlow(body, data) {
+  body.textContent = "";
+  const n = data.buckets.length;
+  if (!data.projects.length) { body.textContent = "No sessions in this range."; return; }
+
+  // Top projects by total keep their own colour; the long tail folds into "other".
+  const series = data.projects.slice(0, FLOW_TOP).map((p, i) =>
+    ({ name: p.name, minutes: p.minutes, total: p.total, color: `var(--flow-${i + 1})` }));
+  const rest = data.projects.slice(FLOW_TOP);
+  if (rest.length) {
+    const minutes = data.buckets.map((_, i) => rest.reduce((a, p) => a + p.minutes[i], 0));
+    series.push({ name: `other (${rest.length})`, minutes, total: rest.reduce((a, p) => a + p.total, 0),
+      color: "var(--faint)", other: true });
+  }
+
+  const W = 1080, H = 380, padT = 8, padB = 26, padL = 4, padR = 150, nodeW = 9, gap = 3;
+  const colTotals = data.buckets.map((_, i) => series.reduce((a, s) => a + s.minutes[i], 0));
+  const maxNodes = Math.max(...data.buckets.map((_, i) => series.filter(s => s.minutes[i] > 0).length), 1);
+  const maxTotal = Math.max(...colTotals, 1);
+  const k = (H - padT - padB - gap * (maxNodes - 1)) / maxTotal;
+  const colX = i => padL + (n === 1 ? 0 : i * (W - padL - padR - nodeW) / (n - 1));
+
+  // Per column, biggest project on top (other always last), so rank changes
+  // show up as ribbons crossing.
+  const pos = data.buckets.map((_, i) => {
+    const order = series.filter(s => s.minutes[i] > 0)
+      .sort((a, b) => (a.other - b.other) || (b.minutes[i] - a.minutes[i]));
+    const hs = order.map(s => Math.max(s.minutes[i] * k, 1));
+    const colH = hs.reduce((a, h) => a + h, 0) + gap * Math.max(order.length - 1, 0);
+    const out = new Map(); let y = padT + (H - padT - padB - colH) / 2;   // centred, alluvial-style
+    order.forEach((s, j) => { out.set(s, [y, hs[j]]); y += hs[j] + gap; });
+    return out;
+  });
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": "Hands-on time per project over time" });
+  const tip = el("div", "flow-tip"); tip.hidden = true;
+  const label = d => {
+    const dt = new Date(d + "T00:00");
+    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+  const bucketName = i => data.bucket === "week" ? "week of " + label(data.buckets[i]) : label(data.buckets[i]);
+  const hover = (s, i, ev) => {
+    svg.classList.add("hl");
+    svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("on", e.dataset.p === s.name));
+    const v = i == null ? `${fmtHours(s.total)} total` : `${fmtHours(s.minutes[i])} · ${bucketName(i)}`;
+    tip.textContent = `${s.name} - ${v}`;
+    tip.hidden = false;
+    const r = body.getBoundingClientRect();
+    tip.style.left = (ev.clientX - r.left + body.scrollLeft + 12) + "px";
+    tip.style.top = (ev.clientY - r.top + body.scrollTop + 12) + "px";
+  };
+  const unhover = () => { svg.classList.remove("hl"); tip.hidden = true; };
+  const bind = (e, s, i) => { e.addEventListener("mousemove", ev => hover(s, i, ev)); e.addEventListener("mouseleave", unhover); };
+
+  const ribs = svgEl("g", {}), nodes = svgEl("g", {});
+  svg.append(ribs, nodes);
+  for (const s of series) {
+    for (let i = 0; i < n; i++) {
+      const a = pos[i].get(s);
+      if (!a) continue;
+      const x = colX(i);
+      const r = svgEl("rect", { x, y: a[0], width: nodeW, height: a[1], rx: 2, fill: s.color,
+        class: "node", "data-p": s.name });
+      bind(r, s, i); nodes.appendChild(r);
+      const b = i + 1 < n && pos[i + 1].get(s);
+      if (!b) continue;
+      const x0 = x + nodeW, x1 = colX(i + 1), mx = (x0 + x1) / 2;
+      const d = `M${x0},${a[0]} C${mx},${a[0]} ${mx},${b[0]} ${x1},${b[0]}` +
+        ` L${x1},${b[0] + b[1]} C${mx},${b[0] + b[1]} ${mx},${a[0] + a[1]} ${x0},${a[0] + a[1]} Z`;
+      const p = svgEl("path", { d, fill: s.color, class: "rib", "data-p": s.name });
+      bind(p, s, null); ribs.appendChild(p);
+    }
+  }
+
+  // Name each project once, beside its last block, where there's room.
+  const placed = [];
+  for (const s of series) {
+    let i = n - 1; while (i >= 0 && !pos[i].get(s)) i--;
+    if (i < 0) continue;
+    const [y, h] = pos[i].get(s);
+    const cy = y + h / 2;
+    if (i < n - 1 && h < 12) continue;               // mid-chart labels need a fat block
+    if (placed.some(p => Math.abs(p - cy) < 12 && i === n - 1)) continue;
+    if (i === n - 1) placed.push(cy);
+    const t = svgEl("text", { x: colX(i) + nodeW + 5, y: cy + 4, "data-p": s.name, class: "node" });
+    t.textContent = s.name; bind(t, s, null); nodes.appendChild(t);
+  }
+
+  // Date axis, thinned to about a dozen ticks.
+  const every = Math.ceil(n / 12);
+  for (let i = 0; i < n; i += every) {
+    const t = svgEl("text", { x: colX(i) + nodeW / 2, y: H - 8, "text-anchor": i === 0 ? "start" : "middle", class: "axis" });
+    t.textContent = label(data.buckets[i]); svg.appendChild(t);
+  }
+
+  const total = series.reduce((a, s) => a + s.total, 0);
+  const note = el("div", "flow-note");
+  note.textContent = `${fmtHours(total)} hands-on across ${data.projects.length} projects. ` +
+    "Time counts gaps between transcript events under 15 minutes.";
+  body.append(svg, tip, note);
+}
+$("#flowBtn").onclick = openFlow;
 </script>
 </body>
 </html>

@@ -26,7 +26,7 @@ import threading
 import html
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
@@ -958,6 +958,54 @@ def _compute_day(target):
 
 
 # --------------------------------------------------------------------------- #
+# Project flow: hands-on time per project per day/week, for the flow chart
+# --------------------------------------------------------------------------- #
+# Time is measured from the transcript itself: the gap between two consecutive
+# events in a session counts as work, unless it's longer than FLOW_IDLE_GAP
+# (the agent was left alone). Wall-clock start-to-end would credit a session
+# left open overnight with eight hours.
+FLOW_IDLE_GAP = 15 * 60
+FLOW_MAX_BUCKETS = 104
+
+
+def _bucket_start(d, bucket):
+    return d - timedelta(days=d.weekday()) if bucket == "week" else d
+
+
+def project_flow(bucket="week", count=12, today=None):
+    """Minutes per project per bucket, oldest bucket first. Session-days under
+    MIN_SESSION_TOKENS are skipped, same as the daily log."""
+    if bucket not in ("day", "week"):
+        raise ValueError("bucket must be 'day' or 'week'")
+    count = max(1, min(int(count), FLOW_MAX_BUCKETS))
+    step = timedelta(weeks=1) if bucket == "week" else timedelta(days=1)
+    last = _bucket_start(today or date.today(), bucket)
+    starts = [last - step * (count - 1 - i) for i in range(count)]
+    index = {d: i for i, d in enumerate(starts)}
+
+    seconds = {}
+    for s in collect_sessions():
+        by_day = {}
+        for ts, _, tok in s["events"]:
+            by_day.setdefault(ts.date(), []).append((ts, tok))
+        for day, evs in by_day.items():
+            i = index.get(_bucket_start(day, bucket))
+            if i is None or sum(t for _, t in evs) < MIN_SESSION_TOKENS:
+                continue
+            times = sorted(ts for ts, _ in evs)
+            active = sum(g for g in ((b - a).total_seconds() for a, b in zip(times, times[1:]))
+                         if g <= FLOW_IDLE_GAP)
+            row = seconds.setdefault(s["project_short"], [0.0] * count)
+            row[i] += active
+
+    projects = [{"name": name, "minutes": [round(x / 60, 1) for x in row],
+                 "total": round(sum(row) / 60, 1)}
+                for name, row in seconds.items() if sum(row) >= 60]
+    projects.sort(key=lambda p: -p["total"])
+    return {"bucket": bucket, "buckets": [d.isoformat() for d in starts], "projects": projects}
+
+
+# --------------------------------------------------------------------------- #
 # Handoff docs attached to a backlog task / idea
 # --------------------------------------------------------------------------- #
 # A handoff doc gets dragged onto a card straight from Finder or an editor. The
@@ -1202,6 +1250,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"error": "no such image"})
                 else:
                     self._send(200, got[0], got[1])
+            elif path == "/api/flow":
+                q = parse_qs(parsed.query)
+                try:
+                    flow = project_flow(q.get("bucket", ["week"])[0], q.get("count", ["12"])[0])
+                except ValueError as e:
+                    self._send(400, {"error": str(e)})
+                else:
+                    self._send(200, flow)
             elif path == "/api/log/dates":
                 self._send(200, {"dates": available_dates()})
             elif path == "/api/log":
